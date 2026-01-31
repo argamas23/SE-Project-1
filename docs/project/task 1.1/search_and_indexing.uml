@@ -23,17 +23,6 @@ package "search" {
         + getCategories() : Set<String>
     }
 
-    class SearchResultMap {
-        - limit: int
-        - offset: int
-        - categories: Set<String>
-        - results: Map<Date, Set<WeblogEntryWrapper>>
-        + getLimit() : int
-        + getOffset() : int
-        + getResults() : Map<Date, Set<WeblogEntryWrapper>>
-        + getCategories() : Set<String>
-    }
-
     package "lucene" {
         
         class LuceneIndexManager {
@@ -61,9 +50,7 @@ package "search" {
             + convertHitsToEntryList(...): SearchResultList
         }
         
-        LuceneIndexManager .up.|> IndexManager : implements
-
-        abstract class IndexOperation implements Runnable {
+        class IndexOperation implements Runnable {
             # manager: LuceneIndexManager
             - writer: IndexWriter
             # getDocument(WeblogEntry) : Document
@@ -96,12 +83,12 @@ package "search" {
             + getTerm(field, input): Term
         }
 
-        abstract class ReadFromIndexOperation extends IndexOperation {
+        class ReadFromIndexOperation extends IndexOperation {
             - logger: Log
             + run()
         }
 
-        abstract class WriteToIndexOperation extends IndexOperation {
+        class WriteToIndexOperation extends IndexOperation {
             - logger: Log
             + run()
         }
@@ -165,16 +152,28 @@ package "search" {
         }
     }
 
+    'Relations
+    LuceneIndexManager .up.|> IndexManager
+    LuceneIndexManager ..> SearchResultList
+
+    IndexOperation -> LuceneIndexManager
     
-    LuceneIndexManager *-- IndexOperation : schedules >
+    IndexManager ..> SearchResultList
     
-    LuceneIndexManager ..> SearchResultList : creates >
-    LuceneIndexManager ..> SearchResultMap : creates >
-    
-    IndexManager ..> SearchResultList : returns >
-    
-    SearchOperation ..> SearchResultList : supplies data for >
-    IndexOperation - FieldConstants
-    SearchOperation ..> IndexUtil : creates terms >  
+    SearchOperation ..> SearchResultList
+
+    'Constants
+    'IndexOperation - FieldConstants
+    'LuceneIndexManager - FieldConstants
+    'ReIndexEntryOperation - FieldConstants
+    'RebuildWebsiteIndexOperation - FieldConstants
+    'RemoveEntryOperation - FieldConstants
+    'RemoveWebsiteIndexOperation - FieldConstants
+    'SearchOperation - FieldConstants
+
+    'Index Util
+    'RebuildWebsiteIndexOperation - IndexUtil
+    'RemoveWebsiteIndexOperation - IndexUtil
+    'SearchOperation - IndexUtil
 }
 @enduml
