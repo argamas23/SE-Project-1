@@ -1,0 +1,446 @@
+@startuml
+
+skinparam class {
+    BackgroundColor White
+    ArrowColor #333333
+    BorderColor #333333
+    FontSize 12
+    AttributeFontSize 11
+    MethodFontSize 11
+}
+skinparam packageStyle rectangle
+skinparam linetype ortho
+skinparam nodesep 60
+skinparam ranksep 80
+title Apache Roller 6.0 - Master Weblog & Content Subsystem Architecture
+
+' ------------------------------------------------------------------
+' GROUP 1: DOMAIN MODEL (POJOs) - The Shared State
+' ------------------------------------------------------------------
+package "Domain Model (POJOs)" #EBF5FB {
+
+    class Weblog {
+        - String id
+        - String handle
+        - String name
+        - String description
+        - String creatorUserName
+        - String editorTheme
+        - String locale
+        - String timeZone
+        - String analyticsCode
+        - Boolean visible
+        - Boolean active
+        - Boolean allowComments
+        - Boolean moderateComments
+        - Boolean emailComments
+        - String emailAddress
+        - String blacklist
+        - String defaultPageId
+        - String weblogDayId
+        --
+        + User getCreator()
+        + WeblogTheme getTheme()
+        + List<WeblogEntry> getRecentWeblogEntries(String cat, int len)
+        + List<WeblogEntryComment> getRecentComments(int len)
+        + String getAbsoluteURL()
+        + long getEntryCount()
+        + long getCommentCount()
+        + WeblogCategory getBloggerCategory()
+        + List<WeblogCategory> getWeblogCategories()
+    }
+
+    class WeblogEntry {
+        - String id
+        - String anchor
+        - String title
+        - String text
+        - String summary
+        - String notes
+        - String format
+        - PubStatus status
+        - Timestamp pubTime
+        - Timestamp updateTime
+        - Boolean pinnedToMain
+        - Integer commentDays
+        - String plugins
+        - Boolean rightToLeft
+        --
+        + String render(String format)
+        + String getTransformedText()
+        + String getPermalink()
+        + String getDisplayTitle()
+        + List<WeblogEntryComment> getComments()
+        + List<WeblogEntryTag> getTags()
+        + void addTag(String name)
+        + void onSave()
+    }
+
+    class WeblogCategory {
+        - String id
+        - String name
+        - String description
+        - String path
+        - String image
+        - Integer position
+        --
+        + Boolean isInUse()
+        + List<WeblogEntry> retrieveWeblogEntries(boolean draft)
+    }
+
+    class User {
+        - String id
+        - String userName
+        - String password
+        - String screenName
+        - String fullName
+        - String emailAddress
+        - Date dateCreated
+        - Boolean enabled
+        - String activationCode
+        --
+        + Boolean hasGlobalPermission(String perm)
+        + List<WeblogPermission> getPermissions()
+        + void resetPassword()
+    }
+
+    class WeblogTemplate {
+        - String id
+        - String name
+        - String description
+        - String contents
+        - Date lastModified
+        - Boolean hidden
+        - Boolean navbar
+        - ComponentType action
+        --
+        + String getOutputContentType()
+        + void parseTemplate()
+    }
+
+    class WeblogEntryComment {
+        - String id
+        - String name
+        - String email
+        - String url
+        - String content
+        - Timestamp postTime
+        - ApprovalStatus status
+        - Boolean notify
+        - String remoteHost
+        - String referrer
+        - String userAgent
+    }
+
+    class MediaFile {
+        - String id
+        - String name
+        - String description
+        - String contentType
+        - long length
+        - long lastModified
+        - int width
+        - int height
+        - String creatorUserName
+    }
+    
+    class MediaFileDirectory {
+        - String id
+        - String name
+        - String description
+    }
+
+    enum PubStatus {
+        DRAFT
+        PUBLISHED
+        PENDING
+        SCHEDULED
+    }
+
+    ' Domain Relationships
+    Weblog "1" *-- "0..*" WeblogEntry : owns >
+    Weblog "1" *-- "0..*" WeblogCategory : categorizes >
+    Weblog "1" *-- "0..*" WeblogTemplate : defines layout >
+    Weblog "1" *-- "0..*" MediaFileDirectory : stores >
+    WeblogEntry "1" -- "1" WeblogCategory : assigned to >
+    Weblog "1" -- "1" User : created by >
+    WeblogEntry "1" -- "1" User : authored by >
+    WeblogEntry *-- "0..*" WeblogEntryComment : has >
+    WeblogEntry ..> PubStatus : uses >
+    MediaFileDirectory "1" o-- "0..*" MediaFile : contains >
+}
+
+
+' ------------------------------------------------------------------
+' GROUP 2: BUSINESS LAYER (Services) - The Logic
+' ------------------------------------------------------------------
+package "Business Layer (Services & Managers)" #FEF9E7 {
+
+    interface WeblogManager {
+        + void addWeblog(Weblog newWebsite)
+        + void saveWeblog(Weblog w)
+        + void removeWeblog(Weblog w)
+        + Weblog getWeblogByHandle(String handle)
+        + List<Weblog> getWeblogs(Boolean enabled, Boolean active, ...)
+        + WeblogTemplate getPage(String id)
+        + void savePage(WeblogTemplate page)
+    }
+
+    interface WeblogEntryManager {
+        + void saveWeblogEntry(WeblogEntry entry)
+        + void removeWeblogEntry(WeblogEntry entry)
+        + WeblogEntry getWeblogEntry(String id)
+        + WeblogEntry getWeblogEntryByAnchor(Weblog website, String anchor)
+        + List<WeblogEntry> getWeblogEntries(WeblogEntrySearchCriteria criteria)
+        + String createAnchor(WeblogEntry entry)
+        + void removeWeblogCategory(WeblogCategory cat)
+        + List<TagStat> getPopularTags(Weblog w, ...)
+        + void applyCommentDefaultsToEntries(Weblog website)
+    }
+
+    interface ThemeManager {
+        + void initialize()
+        + WeblogTheme getTheme(Weblog weblog)
+        + SharedTheme getTheme(String id)
+        + void importTheme(Weblog w, SharedTheme t)
+    }
+
+    interface PluginManager {
+        + String applyWeblogEntryPlugins(Map plugins, WeblogEntry entry, String text)
+        + Map<String, WeblogEntryPlugin> getWeblogEntryPlugins(Weblog website)
+        + List<WeblogEntryCommentPlugin> getCommentPlugins()
+    }
+
+    interface URLStrategy {
+        + String getWeblogURL(Weblog w, boolean abs)
+        + String getWeblogEntryURL(Weblog w, String anchor, boolean abs)
+        + String getWeblogCollectionURL(Weblog w, String category, ...)
+        + String getWeblogFeedURL(Weblog w, String type, String cat)
+    }
+    
+    interface MediaFileManager {
+        + void createMediaFile(Weblog weblog, MediaFile mediaFile)
+        + void updateMediaFile(Weblog weblog, MediaFile mediaFile)
+        + MediaFile getMediaFile(String id)
+        + List<MediaFile> searchMediaFiles(Weblog weblog, MediaFileFilter filter)
+    }
+
+    ' Implementations
+    class JPAWeblogManagerImpl implements WeblogManager {
+        - Weblogger roller
+        - JPAPersistenceStrategy strategy
+        - Map<String, String> weblogHandleToIdMap
+        --
+        - void removeWeblogContents(Weblog weblog)
+        + List<StatCount> getMostCommentedWeblogs(...)
+    }
+
+    class JPAWeblogEntryManagerImpl implements WeblogEntryManager {
+        - Weblogger roller
+        - JPAPersistenceStrategy strategy
+        - Map<String, String> entryAnchorToIdMap
+        - Comparator TAG_STAT_NAME_COMPARATOR
+        --
+        + void moveWeblogCategoryContents(Category src, Category dest)
+        + void updateTagCount(String name, Weblog w, int amount)
+        + boolean isDuplicateWeblogCategoryName(WeblogCategory cat)
+    }
+     JPAWeblogManagerImpl ..> Weblog : manages >
+    JPAWeblogEntryManagerImpl ..> WeblogEntry : manages >
+    JPAWeblogEntryManagerImpl ..> WeblogEntrySearchCriteria : uses >
+}
+
+
+' ------------------------------------------------------------------
+' GROUP 3: PRESENTATION - READER (View Layer)
+' ------------------------------------------------------------------
+package "Presentation: Reader (Public UI)" #E8F8F5 {
+
+    class PageServlet <<HttpServlet>> {
+        - Log log
+        - WeblogPageCache weblogPageCache
+        - SiteWideCache siteWideCache
+        - boolean excludeOwnerPages
+        - MobileDeviceRepository mobileDeviceRepository
+        --
+        + void init(ServletConfig config)
+        + void doGet(HttpServletRequest req, HttpServletResponse res)
+        - void render(WeblogPageRequest req, HttpServletResponse res)
+        - void processHit(Weblog weblog)
+        - String getCacheKey(WeblogPageRequest req)
+    }
+
+    class WeblogRequest {
+        - String weblogHandle
+        - String weblogAnchor
+        - String weblogCategoryName
+        - String weblogDate
+        - List<String> tags
+        - String locale
+        - DeviceType deviceType
+        - Weblog weblog
+        - WeblogEntry weblogEntry
+        --
+        + {static} WeblogRequest create(HttpServletRequest req)
+        + Weblog getWeblog()
+        + WeblogEntry getWeblogEntry()
+        + WeblogCategory getWeblogCategory()
+        + String getPathInfo()
+    }
+
+    class RendererManager {
+        - {static} List<RendererFactory> rendererFactories
+        --
+        + {static} Renderer getRenderer(Template template, DeviceType device)
+    }
+
+    interface Renderer {
+        + void render(Map<String, Object> model, Writer writer)
+    }
+
+    class VelocityRenderer implements Renderer {
+        - Template template
+        - {static} VelocityEngine velocityEngine
+        - Exception renderException
+        --
+        + void render(Map<String, Object> model, Writer writer)
+        + void init()
+    }
+
+    class PageModel {
+        - WeblogPageRequest pageRequest
+        - Weblog weblog
+        - URLStrategy urlStrategy
+        --
+        + void init(Map<String, Object> initData)
+        + Map<String, Object> getModel()
+    }
+    
+    class WeblogPageCache {
+        - Cache cache
+        --
+        + CachedContent get(String key, long lastModified)
+        + void put(String key, CachedContent content)
+    }
+
+    ' Reader Relationships
+    PageServlet ..> WeblogRequest : creates/parses >
+    PageServlet --> RendererManager : requests renderer >
+    PageServlet --> WeblogPageCache : checks >
+    PageServlet --> WeblogManager : retrieves Weblog >
+    PageServlet --> WeblogEntryManager : retrieves Content >
+    RendererManager ..> Renderer : provides >
+    VelocityRenderer ..> PageModel : consumes data >
+}
+
+
+' ------------------------------------------------------------------
+' GROUP 4: PRESENTATION - WRITER (Admin UI)
+' ------------------------------------------------------------------
+package "Presentation: Writer (Admin UI)" #FADBD8 {
+
+    abstract class UIAction {
+        - User authenticatedUser
+        - Weblog actionWeblog
+        - String weblog
+        - String actionName
+        - String desiredMenu
+        - String pageTitle
+        - String salt
+        --
+        + void myPrepare()
+        + boolean isUserRequired()
+        + boolean isWeblogRequired()
+        + List<String> requiredWeblogPermissionActions()
+        + String getText(String key)
+        + void addError(String key)
+        + void addMessage(String key)
+    }
+
+    class EntryEdit extends UIAction {
+        - static Log log
+        - EntryBean bean
+        - WeblogEntry entry
+        - String trackbackUrl
+        --
+        + void myPrepare()
+        + String execute()
+        + String saveDraft()
+        + String publish()
+        - String save()
+        + String trackback()
+        + List<WeblogCategory> getCategories()
+        + List<WeblogEntryPlugin> getEntryPlugins()
+    }
+
+    class EntryBean {
+        - String id
+        - String title
+        - String text
+        - String summary
+        - String status
+        - String tagsString
+        - String categoryId
+        - String[] plugins
+        - String dateString
+        - int hours
+        - int minutes
+        - boolean allowComments
+        - Integer commentDays
+        - String enclosureURL
+        --
+        + void copyTo(WeblogEntry entry)
+        + void copyFrom(WeblogEntry entry, Locale locale)
+        + Timestamp getPubTime(Locale locale, TimeZone timezone)
+    }
+
+    class WeblogConfig extends UIAction {
+        - WeblogConfigBean bean
+        - List<WeblogCategory> weblogCategories
+        - List<WeblogEntryEditor> editorsList
+        - List<WeblogEntryPlugin> pluginsList
+        --
+        + void myPrepare()
+        + String execute()
+        + String save()
+        - void myValidate()
+    }
+
+    class WeblogConfigBean {
+        - String handle
+        - String name
+        - String description
+        - String editorTheme
+        - String locale
+        - String timeZone
+        - String analyticsCode
+        - boolean allowComments
+        - boolean emailComments
+        --
+        + void copyTo(Weblog w)
+        + void copyFrom(Weblog w)
+    }
+
+    ' Writer Relationships
+    EntryEdit --> EntryBean : uses >
+    EntryEdit ..> WeblogEntryManager : CRUD operations >
+    EntryEdit ..> WeblogEntry : manages state >
+    WeblogConfig --> WeblogConfigBean : uses >
+    WeblogConfig ..> WeblogManager : updates config >
+    UIAction ..> User : context >
+    UIAction ..> Weblog : context >
+}
+
+' ------------------------------------------------------------------
+' CROSS-LAYER DEPENDENCIES (The Wiring)
+' ------------------------------------------------------------------
+
+' Reader to Logic
+PageServlet --> ThemeManager : finds theme >
+PageServlet --> URLStrategy : generates links >
+
+' Logic to Domain
+WeblogEntry ..> PluginManager : uses for render() >
+Weblog ..> ThemeManager : uses for getTheme() >
+
+@enduml
