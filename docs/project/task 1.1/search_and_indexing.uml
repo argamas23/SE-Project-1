@@ -153,14 +153,20 @@ package "search" {
     }
 
     'Relations
+    IndexManager ..> SearchResultList
+
     LuceneIndexManager .up.|> IndexManager
     LuceneIndexManager ..> SearchResultList
+    LuceneIndexManager --> SearchOperation
+    LuceneIndexManager ..> IndexOperation
 
     IndexOperation -> LuceneIndexManager
-    
-    IndexManager ..> SearchResultList
-    
+
+    SearchOperation ..> LuceneIndexManager
+    SearchOperation ..> IndexUtil
     SearchOperation ..> SearchResultList
+
+    IndexUtil ..> LuceneIndexManager
 
     'Constants
     'IndexOperation - FieldConstants
@@ -174,6 +180,5 @@ package "search" {
     'Index Util
     'RebuildWebsiteIndexOperation - IndexUtil
     'RemoveWebsiteIndexOperation - IndexUtil
-    'SearchOperation - IndexUtil
 }
 @enduml
