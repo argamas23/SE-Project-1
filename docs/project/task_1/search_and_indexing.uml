@@ -1,0 +1,184 @@
+@startuml
+
+package "search" {
+    
+    interface IndexManager {
+        + initialize()
+        + search(...) : SearchResultList
+        + addEntryIndexOperation(WeblogEntry)
+        + addEntryReIndexOperation(WeblogEntry)
+        + rebuildWeblogIndex(WeblogEntry)
+        + removeWeblogIndex(WeblogEntry)
+        + removeEntryIndexOperation(WeblogEntry)
+    }
+
+    class SearchResultList {
+        - limit: int
+        - offset: int
+        - categories: Set<String>
+        - results: List<WeblogEntryWrapper>
+        + getLimit() : int
+        + getOffset() : int
+        + getResults() : List<WeblogEntryWrapper>
+        + getCategories() : Set<String>
+    }
+
+    package "lucene" {
+        
+        class LuceneIndexManager {
+            - reader: IndexReader
+            - roller: Weblogger
+            - logger: Log
+            - searchEnabled: boolean
+            - indexDir: string
+            - indexConsistencyMarker: File
+            - inconsistentAtStartup: boolean
+            - rwl: ReadWriteLock
+            + getReadWriteLock(): ReadWriteLock
+            + isInconsistentAtStartup(): boolean
+            + getAnalyzer(): Analyzer
+            - instantiateAnalyzer(): Analyzer
+            - instantiateDefaultAnalyzer(): Analyzer
+            + scheduleIndexOperation(IndexOperation)
+            + executeIndexOperationNow(IndexOperation)
+            + resetSharedReader()
+            + getSharedIndexReader(): IndexReader
+            + getIndexDirectory(): Directory
+            + indexExists(): boolean
+            + deleteIndex()
+            + createIndex(Directory)
+            + convertHitsToEntryList(...): SearchResultList
+        }
+        
+        class IndexOperation implements Runnable {
+            # manager: LuceneIndexManager
+            - writer: IndexWriter
+            # getDocument(WeblogEntry) : Document
+            # beginWriting() : IndexWriter
+            # endWriting()
+            + run()
+            # doRun()
+        }
+
+        class FieldConstants {
+            + ANCHOR : String
+            + UPDATED : String
+            + ID : String
+            + USERNAME : String
+            + CATEGORY : String
+            + TITLE : String
+            + PUBLISHED : String
+            + CONTENT : String
+            + CONTENT_STORED : String
+            + C_CONTENT : String
+            + C_EMAIL : String
+            + C_NAME : String
+            + CONSTANT : String
+            + CONSTANT_V : String
+            + WEBSITE_HANDLE : String
+            + LOCALE : String
+        }
+
+        class IndexUtil {
+            + getTerm(field, input): Term
+        }
+
+        class ReadFromIndexOperation extends IndexOperation {
+            - logger: Log
+            + run()
+        }
+
+        class WriteToIndexOperation extends IndexOperation {
+            - logger: Log
+            + run()
+        }
+
+        class SearchOperation extends ReadFromIndexOperation {
+            - logger: Log
+            - SEARCH_FIELDS: String
+            - SORTER: Sort
+            - searcher: IndexSearcher
+            - searchresults: TopFieldDocs
+            - term: String
+            - weblogHandle: String
+            - category: String
+            - locale: String
+            - parseError: String
+            + setTerm(String term)
+            + doRun()
+            + getSearcher(): IndexSearcher
+            + setSearcher(IndexSearcher searcher)
+            + getResults(): TopFieldDocs
+            + getResultsCount(): int
+            + getParseError(): String
+            + setWeblogHandle(String weblogHandle)
+            + setCategory(String category)
+            + setLocale(String locale)
+        }
+
+        class RebuildWebsiteIndexOperation extends WriteToIndexOperation {
+            - logger: Log
+            - website: Weblog
+            - roller: Weblogger
+            + doRun()
+        }
+
+        class RemoveWebsiteIndexOperation extends WriteToIndexOperation {
+            - logger: Log
+            - website: Weblog
+            - roller: Weblogger
+            + doRun()
+        }
+
+        class RemoveEntryOperation extends WriteToIndexOperation {
+            - logger: Log
+            - data: WeblogEntry
+            - roller: Weblogger
+            + doRun()
+        }
+
+        class ReIndexEntryOperation extends WriteToIndexOperation {
+            - logger: Log
+            - data: WeblogEntry
+            - roller: Weblogger
+            + doRun()
+        }
+        
+        class AddEntryOperation extends WriteToIndexOperation {
+            - logger: Log
+            - data: WeblogEntry
+            - roller: Weblogger
+            + doRun()
+        }
+    }
+
+    'Relations
+    IndexManager ..> SearchResultList
+
+    LuceneIndexManager .up.|> IndexManager
+    LuceneIndexManager ..> SearchResultList
+    LuceneIndexManager --> SearchOperation
+    LuceneIndexManager ..> IndexOperation
+
+    IndexOperation -> LuceneIndexManager
+
+    SearchOperation ..> LuceneIndexManager
+    SearchOperation ..> IndexUtil
+    SearchOperation ..> SearchResultList
+
+    IndexUtil ..> LuceneIndexManager
+
+    'Constants
+    'IndexOperation - FieldConstants
+    'LuceneIndexManager - FieldConstants
+    'ReIndexEntryOperation - FieldConstants
+    'RebuildWebsiteIndexOperation - FieldConstants
+    'RemoveEntryOperation - FieldConstants
+    'RemoveWebsiteIndexOperation - FieldConstants
+    'SearchOperation - FieldConstants
+
+    'Index Util
+    'RebuildWebsiteIndexOperation - IndexUtil
+    'RemoveWebsiteIndexOperation - IndexUtil
+}
+@enduml
