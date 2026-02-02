@@ -1,0 +1,307 @@
+@startuml
+' User & Role Management Subsystem - accurate model (clean layout)
+
+left to right direction
+
+' --- Styling (keeps diagram legible, change as you like) ---
+skinparam dpi 150
+skinparam shadowing false
+skinparam roundcorner 6
+skinparam classFontName "DejaVu Sans"
+skinparam classAttributeFontSize 11
+skinparam classHeaderFontSize 13
+skinparam packageFontSize 12
+skinparam noteFontSize 11
+skinparam linetype ortho
+skinparam ArrowColor #3B3B3B
+skinparam packageBackgroundColor #F4F6F8
+skinparam classBackgroundColor #FFFFFF
+skinparam classBorderColor #C8C8C8
+skinparam nodesep 60
+skinparam ranksep 50
+skinparam packagePadding 16
+skinparam classAttributeIconSize 0
+
+' -----------------------
+' External / helpers (minimal placeholders)
+' -----------------------
+class "java.security.Permission" as JSecPermission << (E,#FFFCE8) external >>
+class Weblog << (E,#FFFCE8) external >>
+class JPAPersistenceStrategy << (E,#FFFCE8) external >>
+class "javax.persistence.Query" as JPAQuery << (E,#FFFCE8) external >>
+
+' =======================
+' package: weblogger.pojos
+' =======================
+package "weblogger.pojos" {
+  class User <<Serializable>> {
+    - private static final long serialVersionUID
+    - private String id
+    - private String userName
+    - private String password
+    - private String openIdUrl
+    - private String screenName
+    - private String fullName
+    - private String emailAddress
+    - private Date dateCreated
+    - private String locale
+    - private String timeZone
+    - private Boolean enabled
+    - private String activationCode
+    --
+    + User()
+    + User(id:String, userName:String, password:String, fullName:String, emailAddress:String, locale:String, timeZone:String, dateCreated:Date, isEnabled:Boolean)
+    + getId(): String
+    + setId(String)
+    + getUserName(): String
+    + setUserName(String)
+    + getPassword(): String
+    + setPassword(String)
+    + resetPassword(newPassword:String)
+    + getOpenIdUrl(): String
+    + setOpenIdUrl(String)
+    + getScreenName(): String
+    + setScreenName(String)
+    + getFullName(): String
+    + setFullName(String)
+    + getEmailAddress(): String
+    + setEmailAddress(String)
+    + getDateCreated(): Date
+    + setDateCreated(Date)
+    + getLocale(): String
+    + setLocale(String)
+    + getTimeZone(): String
+    + setTimeZone(String)
+    + getEnabled(): Boolean
+    + setEnabled(Boolean)
+    + getActivationCode(): String
+    + setActivationCode(String)
+    + hasGlobalPermission(action:String): boolean
+    + hasGlobalPermissions(actions:List<String>): boolean
+    + toString(): String
+    + equals(Object): boolean
+    + hashCode(): int
+  }
+
+  class UserRole <<Serializable>> {
+    - public static final long serialVersionUID
+    - private String id
+    - private String userName
+    - private String role
+    --
+    + UserRole()
+    + UserRole(username:String, role:String)
+    + getId(): String
+    + setId(String)
+    + getUserName(): String
+    + setUserName(String)
+    + getRole(): String
+    + setRole(String)
+    + toString(): String
+    + equals(Object): boolean
+    + hashCode(): int
+  }
+}
+
+' =========================
+' package: weblogger.permissions
+' =========================
+package "weblogger.permissions" {
+  ' abstract superclass of permission hierarchy
+  abstract class RollerPermission {
+    - private static Log log
+    --
+    + RollerPermission(name:String)
+    + abstract void setActions(String actions)
+    + abstract String getActions()
+    + List<String> getActionsAsList()
+    + void setActionsAsList(List<String> actionsList)
+    + boolean hasAction(String action)
+    + boolean hasActions(List<String> actionsToCheck)
+    + void addActions(ObjectPermission perm)
+    + void addActions(List<String> newActions)
+    + void removeActions(List<String> actionsToRemove)
+    + boolean isEmpty()
+  }
+
+  abstract class ObjectPermission {
+    - protected String id
+    - protected String userName
+    - protected String objectType
+    - protected String objectId
+    - protected boolean pending
+    - protected Date dateCreated
+    - protected String actions
+    --
+    + ObjectPermission()
+    + ObjectPermission(name:String)
+    + String getId()
+    + void setId(String id)
+    + @Override void setActions(String actions)
+    + @Override String getActions()
+    + String getUserName()
+    + void setUserName(String username)
+    + String getObjectId()
+    + void setObjectId(String objectId)
+    + Date getDateCreated()
+    + void setDateCreated(Date dateCreated)
+    + boolean isPending()
+    + void setPending(boolean pending)
+  }
+
+  class WeblogPermission <<Serializable>> {
+    - public static final String EDIT_DRAFT
+    - public static final String POST
+    - public static final String ADMIN
+    - public static final List<String> ALL_ACTIONS
+    --
+    + WeblogPermission()
+    + WeblogPermission(Weblog weblog, User user, String actions)
+    + WeblogPermission(Weblog weblog, User user, List<String> actions)
+    + WeblogPermission(Weblog weblog, List<String> actions)
+    + Weblog getWeblog() throws WebloggerException
+    + User getUser() throws WebloggerException
+    + @Override boolean implies(java.security.Permission perm)
+    + @Override String toString()
+    + @Override boolean equals(Object other)
+    + @Override int hashCode()
+  }
+
+  class GlobalPermission {
+    - protected String actions
+    - public static final String LOGIN
+    - public static final String WEBLOG
+    - public static final String ADMIN
+    --
+    + GlobalPermission(User user) throws WebloggerException
+    + GlobalPermission(List<String> actions) throws WebloggerException
+    + GlobalPermission(User user, List<String> actions) throws WebloggerException
+    + boolean implies(java.security.Permission perm)
+    - private boolean actionImplies(String action1, String action2)
+    + String toString()
+    + void setActions(String actions)
+    + String getActions()
+    + boolean equals(Object other)
+    + int hashCode()
+  }
+}
+
+' =======================
+' package: weblogger.business
+' =======================
+package "weblogger.business" {
+  interface UserManager {
+    + release()
+    + void saveUser(User user) throws WebloggerException
+    + void removeUser(User user) throws WebloggerException
+    + void addUser(User newUser) throws WebloggerException
+    + User getUser(String id) throws WebloggerException
+    + User getUserByUserName(String userName) throws WebloggerException
+    + User getUserByOpenIdUrl(String openIdUrl) throws WebloggerException
+    + User getUserByUserName(String userName, Boolean enabled) throws WebloggerException
+    + List<User> getUsers(Boolean enabled, Date startDate, Date endDate, int offset, int length) throws WebloggerException
+    + List<User> getUsersStartingWith(String startsWith, Boolean enabled, int offset, int length) throws WebloggerException
+    + Map<String, Long> getUserNameLetterMap() throws WebloggerException
+    + List<User> getUsersByLetter(char letter, int offset, int length) throws WebloggerException
+    + long getUserCount() throws WebloggerException
+    + User getUserByActivationCode(String activationCode) throws WebloggerException
+    + boolean checkPermission(RollerPermission perm, User user) throws WebloggerException
+    + WeblogPermission getWeblogPermission(Weblog weblog, User user) throws WebloggerException
+    + WeblogPermission getWeblogPermissionIncludingPending(Weblog weblog, User user) throws WebloggerException
+    + void grantWeblogPermission(Weblog weblog, User user, List<String> actions) throws WebloggerException
+    + void grantWeblogPermissionPending(Weblog weblog, User user, List<String> actions) throws WebloggerException
+    + void confirmWeblogPermission(Weblog weblog, User user) throws WebloggerException
+    + void declineWeblogPermission(Weblog weblog, User user) throws WebloggerException
+    + void revokeWeblogPermission(Weblog weblog, User user, List<String> actions) throws WebloggerException
+    + List<WeblogPermission> getWeblogPermissions(User user) throws WebloggerException
+    + List<WeblogPermission> getWeblogPermissions(Weblog weblog) throws WebloggerException
+    + List<WeblogPermission> getWeblogPermissionsIncludingPending(Weblog weblog) throws WebloggerException
+    + List<WeblogPermission> getPendingWeblogPermissions(User user) throws WebloggerException
+    + List<WeblogPermission> getPendingWeblogPermissions(Weblog weblog) throws WebloggerException
+    + boolean hasRole(String roleName, User user) throws WebloggerException
+    + List<String> getRoles(User user) throws WebloggerException
+    + void grantRole(String roleName, User user) throws WebloggerException
+    + void revokeRole(String roleName, User user) throws WebloggerException
+  }
+
+  class JPAUserManagerImpl <<Singleton, Guice>> {
+    - private static final Log log
+    - private final JPAPersistenceStrategy strategy
+    - private final Map<String, String> userNameToIdMap
+    --
+    + @com.google.inject.Inject protected JPAUserManagerImpl(JPAPersistenceStrategy strat)
+    + @Override void release()
+    + @Override void saveUser(User user) throws WebloggerException
+    + @Override void removeUser(User user) throws WebloggerException
+    + @Override void addUser(User newUser) throws WebloggerException
+    + @Override User getUser(String id) throws WebloggerException
+    + @Override User getUserByUserName(String userName) throws WebloggerException
+    + @Override User getUserByOpenIdUrl(String openIdUrl) throws WebloggerException
+    + @Override User getUserByUserName(String userName, Boolean enabled) throws WebloggerException
+    + @Override List<User> getUsers(Boolean enabled, Date startDate, Date endDate, int offset, int length) throws WebloggerException
+    + @Override List<User> getUsersStartingWith(String startsWith, Boolean enabled, int offset, int length) throws WebloggerException
+    + @Override Map<String, Long> getUserNameLetterMap() throws WebloggerException
+    + @Override List<User> getUsersByLetter(char letter, int offset, int length) throws WebloggerException
+    + @Override long getUserCount() throws WebloggerException
+    + @Override User getUserByActivationCode(String activationCode) throws WebloggerException
+    + @Override boolean checkPermission(RollerPermission perm, User user) throws WebloggerException
+    + @Override WeblogPermission getWeblogPermission(Weblog weblog, User user) throws WebloggerException
+    + @Override WeblogPermission getWeblogPermissionIncludingPending(Weblog weblog, User user) throws WebloggerException
+    + @Override void grantWeblogPermission(Weblog weblog, User user, List<String> actions) throws WebloggerException
+    + @Override void grantWeblogPermissionPending(Weblog weblog, User user, List<String> actions) throws WebloggerException
+    + @Override void confirmWeblogPermission(Weblog weblog, User user) throws WebloggerException
+    + @Override void declineWeblogPermission(Weblog weblog, User user) throws WebloggerException
+    + @Override void revokeWeblogPermission(Weblog weblog, User user, List<String> actions) throws WebloggerException
+    + @Override List<WeblogPermission> getWeblogPermissions(User user) throws WebloggerException
+    + @Override List<WeblogPermission> getWeblogPermissions(Weblog weblog) throws WebloggerException
+    + @Override List<WeblogPermission> getWeblogPermissionsIncludingPending(Weblog weblog) throws WebloggerException
+    + @Override List<WeblogPermission> getPendingWeblogPermissions(User user) throws WebloggerException
+    + @Override List<WeblogPermission> getPendingWeblogPermissions(Weblog weblog) throws WebloggerException
+    + @Override boolean hasRole(String roleName, User user) throws WebloggerException
+    + @Override List<String> getRoles(User user) throws WebloggerException
+    + @Override void grantRole(String roleName, User user) throws WebloggerException
+    + @Override void revokeRole(String roleName, User user) throws WebloggerException
+  }
+}
+
+' =======================
+' Inheritance / implementation
+' =======================
+JSecPermission <|-- RollerPermission
+RollerPermission <|-- ObjectPermission
+ObjectPermission <|-- WeblogPermission
+RollerPermission <|-- GlobalPermission
+weblogger.business.JPAUserManagerImpl ..|> weblogger.business.UserManager
+
+' =======================
+' Associations & Dependencies (clean, non-cluttering)
+' =======================
+weblogger.pojos.User "1" -- "*" weblogger.pojos.UserRole : has
+weblogger.pojos.UserRole --> weblogger.pojos.User : references (userName)
+
+weblogger.business.JPAUserManagerImpl ..> JPAPersistenceStrategy : <<uses>>
+weblogger.business.JPAUserManagerImpl ..> weblogger.pojos.User : <<manages>>
+weblogger.business.JPAUserManagerImpl ..> weblogger.pojos.UserRole : <<manages roles>>
+weblogger.business.JPAUserManagerImpl ..> weblogger.permissions.WeblogPermission : <<manages weblog perms>>
+weblogger.business.JPAUserManagerImpl ..> weblogger.permissions.GlobalPermission : <<constructs/checks>>
+weblogger.business.JPAUserManagerImpl ..> JPAQuery : <<uses named queries>>
+
+weblogger.permissions.WeblogPermission ..> weblogger.pojos.User : <<references>>
+weblogger.permissions.WeblogPermission ..> Weblog : <<applies to>>
+weblogger.permissions.GlobalPermission ..> weblogger.business.UserManager : <<uses getRoles(User)>>
+
+' =======================
+' Notes (brief, helpful)
+' =======================
+note top of weblogger.pojos.User
+  User is a persisted domain object.
+  Authorization checks are delegated to UserManager (e.g., via GlobalPermission).
+end note
+
+note right of weblogger.business.JPAUserManagerImpl
+  JPAUserManagerImpl is a Guice singleton backed by JPA.
+  - maintains userName -> id cache
+  - implements user CRUD, search, role & weblog permission lifecycle
+end note
+
+@enduml
