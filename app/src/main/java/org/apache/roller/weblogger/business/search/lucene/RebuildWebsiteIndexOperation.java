@@ -103,13 +103,13 @@ public class RebuildWebsiteIndexOperation extends WriteToIndexOperation {
                 Term tWebsite = null;
                 if (website != null) {
                     tWebsite = IndexUtil.getTerm(FieldConstants.WEBSITE_HANDLE,
-                            website.getHandle());
+                            website.getHandle(), LuceneIndexManager.getAnalyzer());
                 }
                 if (tWebsite != null) {
                     writer.deleteDocuments(tWebsite);
                 } else {
                     Term all = IndexUtil.getTerm(FieldConstants.CONSTANT,
-                            FieldConstants.CONSTANT_V);
+                            FieldConstants.CONSTANT_V, LuceneIndexManager.getAnalyzer());
                     writer.deleteDocuments(all);
                 }
 

@@ -91,7 +91,7 @@ public class RemoveWebsiteIndexOperation extends WriteToIndexOperation {
                     handle = website.getHandle();
                 }
                 Term tHandle = IndexUtil.getTerm(FieldConstants.WEBSITE_HANDLE,
-                        handle);
+                        handle, LuceneIndexManager.getAnalyzer());
 
                 if (tHandle != null) {
                     writer.deleteDocuments(tHandle);
