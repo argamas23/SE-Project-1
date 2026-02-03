@@ -103,6 +103,14 @@ Multiple responsibilities combined into one class.
 Hard to test and refactor.
 High risk of regression during changes.
 
+### 8: Cyclically-dependent Modularization
+Class: `IndexUtil`
+Path: `org.apache.roller.weblogger.business.search.lucene`
+Design Smell: `Cyclically-dependent Modularization`
+Issue Description (Designite): The tool detected the smell in this class because this class participates in a cyclic dependency. The participating classes in the cycle are: LuceneIndexManager; SearchOperation; IndexUtil; IndexOperation
+
+
+
 # TASK 2B: CODE METRICS ANALYSIS 
 
 ## TOOLS USED
