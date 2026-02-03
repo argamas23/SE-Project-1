@@ -49,3 +49,83 @@ Concrete permissions (`GlobalPermission`, `WeblogPermission`, etc.) inherit this
   - Concrete implementations of `setActions(String)` and `getActions()` required by `RollerPermission`.
 
 Concrete subclasses (like `WeblogPermission`) reuse these fields/behaviour to represent permissions on particular objects.
+
+
+## 1) Summary of the class diagram
+
+The class diagram for these three classes captures:
+
+* **`User`** — domain entity (POJO) representing an account. Holds identity, credentials, profile attributes, and small behaviour: `resetPassword(...)` and permission check helpers (`hasGlobalPermission(s)`).
+* **`UserRole`** — simple role-assignment entity mapping a `userName` → `role`. Lightweight POJO used to record global roles like `admin` or `editor`.
+* **`WeblogPermission`** — permission object scoped to a specific weblog. It is an `ObjectPermission`/`RollerPermission` subclass (implements semantics for weblog-level actions such as `POST`, `EDIT_DRAFT`, `ADMIN`) and is used by the permission subsystem and persisted by the `UserManager` implementation.
+
+Key relationships shown in the diagram:
+
+* `User` — **1..*** `UserRole` (a user may have many roles).
+* `UserRole` — references the user by `userName` (string) rather than a direct object reference.
+* `WeblogPermission` — applies to a `Weblog` (its `objectId` is typically the weblog handle) and inherits from the permission hierarchy (`ObjectPermission` → `RollerPermission`).
+* `User` uses the permission objects (creates `GlobalPermission` and calls `UserManager.checkPermission(...)`).
+
+---
+
+## 2) Responsibilities (per class)
+
+**User**
+
+* Store user information (id, username, email, screen name, password hash).
+* Provide convenience actions:
+
+  * `resetPassword(newPassword)` — delegates to `RollerContext.getPasswordEncoder()` for hashing.
+  * `hasGlobalPermissions(...)` — builds a `GlobalPermission` and asks `UserManager` whether the user is allowed the action(s).
+
+**UserRole**
+
+* Represent a role assignment with fields: `id`, `userName`, `role`.
+* Equality/hash based on `userName` + `role`.
+* Used by role-management code (grant/revoke/list roles).
+
+**WeblogPermission**
+
+* Represent weblog-scoped permissions (which actions are allowed for a given user on a given weblog).
+* Track pending/confirmed state (in the superclass `ObjectPermission`).
+* Used by `UserManager` to grant/confirm/revoke weblog access and by `checkPermission` to evaluate access at runtime.
+
+---
+
+## 3) Design observations & smells (concise)
+
+**Encapsulation / Associations**
+
+* `UserRole` references user via `userName` `String` rather than `User` object → *deficient encapsulation*. This leaks identity handling and complicates object graphs / ORM navigation.
+* `WeblogPermission` references weblog by handle/id (string) instead of a typed `Weblog` association in the POJO → similar encapsulation issue.
+
+**Abstraction / Stringly-typed**
+
+* Several parts of the permission system use comma-separated strings and configuration keys (e.g., mapping `role.action.<role>` to a list of actions). This is *stringly-typed* and fragile. Enums or typed classes would be safer.
+
+**Modularization / God service**
+
+* The `UserManager` implementation (not one of the three files but visible in the system) is large and holds many responsibilities (users, roles, weblog permissions), which makes the permission flow more coupled and harder to test in isolation.
+
+**Practical consequences**
+
+* Harder to write unit tests for domain behaviour that currently depends on `UserManager` (global factory usage is common in the codebase).
+* Identity-as-string decisions require extra DB lookups or in-memory cache to map username → id (which the JPA implementation does).
+
+---
+
+## 4) Strengths (what’s good)
+
+* **Clear separation** between domain objects (POJOs) and permission objects — permissions are explicit objects, not ad-hoc checks.
+* **Permission hierarchy** (global vs weblog) allows expressing site-wide roles (`admin`, `weblog`, `login`) and weblog-scoped actions independently.
+* `WeblogPermission` supports pending/confirm workflows (invite/confirm) — good model for real-world workflows.
+
+
+
+
+
+
+
+
+
+
