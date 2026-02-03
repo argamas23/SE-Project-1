@@ -1,12 +1,16 @@
-TASK 2A: DESIGN SMELLS ANALYSIS
+# TASK 2A: DESIGN SMELLS ANALYSIS
+
 Design smells represent architectural-level problems that affect maintainability, scalability, and testability. Unlike code smells reported by static analysis tools, design smells require interpretation of tool outputs combined with UML and dependency analysis.
-TOOLS USED
-SonarQube (code smells, complexity, coupling, duplication)
-PMD 7.17.0 (empty catch blocks, unused methods, serialization warnings)
-CPD (PMD Copy-Paste Detector)
+
+## TOOLS USED
+SonarQube (Code metrics: complexity, coupling, duplication)
+Designite (Design smells)
+CodeMR
 Manual UML dependency analysis
 
-DESIGN SMELL 1: GLOBAL STATE VIA STATIC SINGLETON FACTORY
+## DESIGN SMELLS
+
+### 1: GLOBAL STATE VIA STATIC SINGLETON FACTORY
 Classification: Structural Design Smell
 Severity: CRITICAL
 Evidence:
@@ -21,7 +25,7 @@ Creates tight coupling across all layers.
 UML Rationale:
 All UI, rendering, and web service components directly depend on a single static factory, forming a star topology. This results in high coupling and zero substitutability.
 
-DESIGN SMELL 2: GOD CLASS / BROKEN MODULARIZATION
+### 2: GOD CLASS / BROKEN MODULARIZATION
 Classification: Cohesion Design Smell
 Severity: CRITICAL
 Evidence:
@@ -36,7 +40,7 @@ Difficult to test due to excessive mocking requirements.
 UML Rationale:
 The Weblogger interface acts as a central hub controlling unrelated subsystems such as content, media, search, admin, and planet services.
 
-DESIGN SMELL 3: STATIC CONFIGURATION UTILITY (IMPERATIVE ABSTRACTION)
+### 3: STATIC CONFIGURATION UTILITY (IMPERATIVE ABSTRACTION)
 Classification: Configuration Design Smell
 Severity: HIGH
 Evidence:
@@ -51,7 +55,7 @@ Static initialization order issues may cause startup failures.
 Architectural Impact:
 All layers are tightly coupled to a single static configuration source, preventing modularity and flexible configuration management.
 
-DESIGN SMELL 4: ACTION CLASS PROLIFERATION (HIERARCHY SMELL)
+### 4: ACTION CLASS PROLIFERATION (HIERARCHY SMELL)
 Classification: Structural / Hierarchy Design Smell
 Severity: HIGH
 Evidence:
@@ -64,7 +68,7 @@ Poor cohesion among related behaviors.
 Navigation and understanding of entity behavior becomes difficult.
 Violates modern controller design practices.
 
-DESIGN SMELL 5: FAT INTERFACES (INTERFACE SEGREGATION VIOLATION)
+### 5: FAT INTERFACES (INTERFACE SEGREGATION VIOLATION)
 Classification: Interface Design Smell
 Severity: HIGH
 Evidence:
@@ -75,7 +79,7 @@ Clients depend on many unused methods.
 Difficult to mock and test.
 Interface contracts are unclear and unstable.
 
-DESIGN SMELL 6: CROSS-PACKAGE TIGHT COUPLING (WEBLOGGER ↔ PLANET)
+### 6: CROSS-PACKAGE TIGHT COUPLING (WEBLOGGER ↔ PLANET)
 Classification: Dependency Design Smell
 Severity: HIGH
 Evidence:
@@ -87,7 +91,7 @@ Violates modular boundaries.
 Prevents independent evolution of packages.
 Increases ripple effects across subsystems.
 
-DESIGN SMELL 7: GOD MANAGER CLASS
+### 7: GOD MANAGER CLASS
 Classification: Cohesion Design Smell
 Severity: MEDIUM
 Evidence:
@@ -99,14 +103,15 @@ Multiple responsibilities combined into one class.
 Hard to test and refactor.
 High risk of regression during changes.
 
-TASK 2B: CODE METRICS ANALYSIS 
-TOOLS USED
-SonarQube
-PMD 7.17.0
-CPD
-Manual Chidamber & Kemerer (CK) metric calculation
+# TASK 2B: CODE METRICS ANALYSIS 
 
-METRIC 1: EFFERENT COUPLING (Ce)
+## TOOLS USED
+SonarQube
+CodeMR
+
+## METRICS
+
+### 1: EFFERENT COUPLING (Ce)
 Definition:
 Number of classes a given class depends on.
 Tool:
@@ -119,7 +124,7 @@ Exceeds critical threshold (>15).
 Indicates strong coupling.
 Refactoring becomes risky and expensive.
 
-METRIC 2: DEPTH OF INHERITANCE TREE (DIT)
+### 2: DEPTH OF INHERITANCE TREE (DIT)
 Definition:
 Maximum length from class to root of inheritance hierarchy.
 Tool:
@@ -131,7 +136,7 @@ Inheritance contracts are hard to understand.
 Serialization and API issues propagate to all subclasses.
 Approaches warning threshold for maintainability.
 
-METRIC 3: LINES OF CODE (LOC)
+### 3: LINES OF CODE (LOC)
 Tool:
 SonarQube
 Key measurements:
@@ -143,7 +148,7 @@ Exceeds recommended maintainability limits.
 Strong indicator of God Class behavior.
 Difficult to comprehend and test.
 
-METRIC 4: CYCLOMATIC COMPLEXITY (CC)
+### 4: CYCLOMATIC COMPLEXITY (CC)
 Definition:
 Number of independent execution paths.
 Tool:
@@ -156,7 +161,7 @@ High testing effort required.
 Increased likelihood of defects.
 Reduced code readability.
 
-METRIC 5: LACK OF COHESION OF METHODS (LCOM)
+### 5: LACK OF COHESION OF METHODS (LCOM)
 Definition:
 Measures how closely methods relate to shared fields.
 Tool:
@@ -169,7 +174,7 @@ Indicates low cohesion.
 Suggests class should be split into smaller components.
 Supports God Class diagnosis.
 
-METRIC 6: COMMENT DENSITY
+### 6: COMMENT DENSITY
 Definition:
 Ratio of comment lines to code lines.
 Tool:
@@ -182,7 +187,7 @@ Poor readability and maintainability.
 Higher onboarding cost for new developers.
 Increased risk of API misuse.
 
-OVERALL QUALITY ASSESSMENT
+# OVERALL QUALITY ASSESSMENT
 Quality Risk Level: MEDIUM–HIGH
 Key Risks:
 Global static state prevents unit testing.
@@ -196,6 +201,6 @@ Improve cohesion (LCOM > 40%)
 Replace static utilities with dependency injection
 Consolidate action hierarchies
 
-CONCLUSION
+# CONCLUSION
 This analysis shows that although Apache Roller is functionally mature, its initial architecture suffers from critical design smells related to global state, over-centralization, and poor modularization. The selected metrics strongly justify refactoring and provide a clear, tool-supported roadmap for improving maintainability, testability, and architectural quality.
 
