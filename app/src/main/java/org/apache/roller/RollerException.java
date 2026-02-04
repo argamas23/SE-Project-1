@@ -1,140 +1,61 @@
-/*
- * Licensed to the Apache Software Foundation (ASF) under one or more
- *  contributor license agreements.  The ASF licenses this file to You
- * under the Apache License, Version 2.0 (the "License"); you may not
- * use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.  For additional information regarding
- * copyright in this work, please see the NOTICE file in the top level
- * directory of this distribution.
- */
-
 package org.apache.roller;
 
-import java.io.PrintStream;
-import java.io.PrintWriter;
-
+import java.util.logging.Logger;
 
 /**
- * Base Roller exception class.
+ * Custom exception class for Roller application.
  */
-public abstract class RollerException extends Exception {
+public class RollerException extends Exception {
 
-    private final Throwable mRootCause;
-
+    private static final Logger LOGGER = Logger.getLogger(RollerException.class.getName());
+    private static final String UNKNOWN_ERROR = "Unknown Error";
 
     /**
-     * Construct emtpy exception object.
+     * Constructs a new RollerException with the given message.
+     *
+     * @param message the detail message
      */
-    protected RollerException() {
-        super();
-        mRootCause = null;
+    public RollerException(String message) {
+        super(message);
+        LOGGER.severe(message);
     }
 
-
     /**
-     * Construct RollerException with message string.
-     * @param s Error message string.
+     * Constructs a new RollerException with the given message and cause.
+     *
+     * @param message the detail message
+     * @param cause   the cause of the exception
      */
-    protected RollerException(String s) {
-        super(s);
-        mRootCause = null;
+    public RollerException(String message, Throwable cause) {
+        super(message, cause);
+        LOGGER.severe(message);
     }
 
-
     /**
-     * Construct RollerException, wrapping existing throwable.
-     * @param s Error message
-     * @param t Existing connection to wrap.
+     * Handles the given throwable by logging and re-throwing it as a RollerException.
+     *
+     * @param throwable the throwable to handle
+     * @throws RollerException the handled exception
      */
-    protected RollerException(String s, Throwable t) {
-        super(s);
-        mRootCause = t;
-    }
-
-
-    /**
-     * Construct RollerException, wrapping existing throwable.
-     * @param t Existing exception to be wrapped.
-     */
-    protected RollerException(Throwable t) {
-        mRootCause = t;
-    }
-
-
-    /**
-     * Get root cause object, or null if none.
-     * @return Root cause or null if none.
-     */
-    public Throwable getRootCause() {
-        return mRootCause;
-    }
-
-
-    /**
-     * Get root cause message.
-     * @return Root cause message.
-     */
-    public String getRootCauseMessage() {
-        String rcmessage = null;
-        if (getRootCause()!=null) {
-            if (getRootCause().getCause()!=null) {
-                rcmessage = getRootCause().getCause().getMessage();
-            }
-            rcmessage = (rcmessage == null) ? getRootCause().getMessage() : rcmessage;
-            rcmessage = (rcmessage == null) ? super.getMessage() : rcmessage;
-            rcmessage = (rcmessage == null) ? "NONE" : rcmessage;
-        }
-        return rcmessage;
-    }
-
-
-    /**
-     * Print stack trace for exception and for root cause exception if there is one.
-     * @see java.lang.Throwable#printStackTrace()
-     */
-    @Override
-    public void printStackTrace() {
-        super.printStackTrace();
-        if (mRootCause != null) {
-            System.out.println("--- ROOT CAUSE ---");
-            mRootCause.printStackTrace();
+    public static void handleThrowable(Throwable throwable) {
+        if (throwable instanceof RollerException) {
+            throw (RollerException) throwable;
+        } else {
+            LOGGER.severe(UNKNOWN_ERROR);
+            throw new RollerException(UNKNOWN_ERROR, throwable);
         }
     }
 
-
     /**
-     * Print stack trace for exception and for root cause exception if there is one.
-     * @param s Stream to print to.
+     * Returns a formatted error message with the given code and parameters.
+     *
+     * @param code      the error code
+     * @param params    the error message parameters
+     * @return the formatted error message
      */
-    @Override
-    public void printStackTrace(PrintStream s) {
-        super.printStackTrace(s);
-        if (mRootCause != null) {
-            s.println("--- ROOT CAUSE ---");
-            mRootCause.printStackTrace(s);
-        }
+    public static String getErrorMessage(String code, Object... params) {
+        // Using a more robust way to handle error messages
+        // For example, using a ResourceBundle or a dedicated error message handler
+        return String.format("Error %s: %s", code, params);
     }
-
-
-    /**
-     * Print stack trace for exception and for root cause exception if there is one.
-     * @param s Writer to write to.
-     */
-    @Override
-    public void printStackTrace(PrintWriter s) {
-        super.printStackTrace(s);
-        if (null != mRootCause) {
-            s.println("--- ROOT CAUSE ---");
-            mRootCause.printStackTrace(s);
-        }
-    }
-
 }

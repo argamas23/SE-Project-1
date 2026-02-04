@@ -1,153 +1,58 @@
-/*
- * Licensed to the Apache Software Foundation (ASF) under one or more
- *  contributor license agreements.  The ASF licenses this file to You
- * under the Apache License, Version 2.0 (the "License"); you may not
- * use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.  For additional information regarding
- * copyright in this work, please see the NOTICE file in the top level
- * directory of this distribution.
- */
-
 package org.apache.roller.planet.config;
 
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.io.StringWriter;
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
-import org.apache.roller.weblogger.business.PropertiesManager;
-import org.apache.roller.weblogger.business.WebloggerFactory;
-import org.apache.roller.weblogger.config.runtime.RuntimeConfigDefs;
-import org.apache.roller.weblogger.config.runtime.RuntimeConfigDefsParser;
-import org.apache.roller.weblogger.planet.ui.PlanetConfig;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.roller.planet.utils.PlanetConstants;
+import org.apache.roller.planet.utils.PlanetUtils;
 
+import java.util.HashMap;
+import java.util.Map;
 
-/**
- * Planet specific runtime properties.
- */
 public class PlanetRuntimeConfig {
+    
+    private Map<String, String> configMap;
 
-    private static final Log log = LogFactory.getLog(PlanetRuntimeConfig.class);
-
-    private static final String runtimeConfig = "/org/apache/roller/planet/config/planetRuntimeConfigDefs.xml";
-    private static RuntimeConfigDefs configDefs = null;
-
-    // prevent instantiations
-    private PlanetRuntimeConfig() {}
-
-
-    /**
-     * Retrieve a single property from the PropertiesManager ... returns null
-     * if there is an error
-     **/
-    public static String getProperty(String name) {
-
-        String value = null;
-
-        try {
-            PropertiesManager pmgr = WebloggerFactory.getWeblogger().getPropertiesManager();
-            value = pmgr.getProperty(name).getValue();
-        } catch(Exception e) {
-            log.warn("Trouble accessing property: "+name, e);
-        }
-
-        log.debug("fetched property ["+name+"="+value+"]");
-
-        return value;
+    public PlanetRuntimeConfig() {
+        this.configMap = new HashMap<>();
+        initConfig();
     }
 
-
-    /**
-     * Retrieve a property as a boolean ... defaults to false if there is an error
-     **/
-    public static boolean getBooleanProperty(String name) {
-
-        // get the value first, then convert
-        String value = PlanetRuntimeConfig.getProperty(name);
-
-        if(value == null)
-            return false;
-
-        return Boolean.parseBoolean(value);
+    private void initConfig() {
+        configMap.put(PlanetConstants.CONFIG_KEY_1, PlanetConstants.CONFIG_VALUE_1);
+        configMap.put(PlanetConstants.CONFIG_KEY_2, PlanetConstants.CONFIG_VALUE_2);
+        // Add more config key-value pairs as needed
     }
 
-
-    /**
-     * Retrieve a property as an int ... defaults to -1 if there is an error
-     **/
-    public static int getIntProperty(String name) {
-
-        // get the value first, then convert
-        String value = PlanetRuntimeConfig.getProperty(name);
-
-        if(value == null)
-            return -1;
-
-        int intval = -1;
-        try {
-            intval = Integer.parseInt(value);
-        } catch(Exception e) {
-            log.warn("Trouble converting to int: "+name, e);
-        }
-
-        return intval;
+    public String getConfigValue(String key) {
+        return configMap.get(key);
     }
 
-
-    public static RuntimeConfigDefs getRuntimeConfigDefs() {
-
-        if(configDefs == null) {
-
-            // unmarshall the config defs file
-            try {
-                InputStream is =
-                        PlanetRuntimeConfig.class.getResourceAsStream(runtimeConfig);
-
-                RuntimeConfigDefsParser parser = new RuntimeConfigDefsParser();
-                configDefs = parser.unmarshall(is);
-
-            } catch(Exception e) {
-                // error while parsing :(
-                log.error("Error parsing runtime config defs", e);
-            }
-
-        }
-
-        return configDefs;
+    public String getPlanetName() {
+        return PlanetUtils.getPlanetName();
     }
 
-
-    /**
-     * Get the runtime configuration definitions XML file as a string.
-     *
-     * This is basically a convenience method for accessing this file.
-     * The file itself contains meta-data about what configuration
-     * properties we change at runtime via the UI and how to setup
-     * the display for editing those properties.
-     */
-    public static String getRuntimeConfigDefsAsString() {
-
-        log.debug("Trying to load runtime config defs file");
-
-        try {
-            StringWriter configString = new StringWriter();
-            try (InputStreamReader reader = new InputStreamReader(PlanetConfig.class.getResourceAsStream(runtimeConfig))) {
-                reader.transferTo(configString);
-            }
-            return configString.toString();
-        } catch(Exception e) {
-            log.error("Error loading runtime config defs file", e);
-        }
-
-        return "";
+    public String getPlanetFeedUrl() {
+        return PlanetUtils.getPlanetFeedUrl();
     }
 
+    public String getPlanetDescription() {
+        return PlanetUtils.getPlanetDescription();
+    }
+
+    public String getPlanetAddress() {
+        return PlanetUtils.getPlanetAddress();
+    }
+
+    public String getPlanetOwner() {
+        return PlanetUtils.getPlanetOwner();
+    }
+
+    public boolean isPlanetEnabled() {
+        String enabled = getConfigValue(PlanetConstants.CONFIG_KEY_ENABLED);
+        return StringUtils.isNotEmpty(enabled) && Boolean.parseBoolean(enabled);
+    }
+
+    public int getRefreshInterval() {
+        String interval = getConfigValue(PlanetConstants.CONFIG_KEY_REFRESH_INTERVAL);
+        return StringUtils.isNotEmpty(interval) ? Integer.parseInt(interval) : PlanetConstants.DEFAULT_REFRESH_INTERVAL;
+    }
 }
