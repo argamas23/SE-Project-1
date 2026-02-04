@@ -1,79 +1,142 @@
-/*
- * Licensed to the Apache Software Foundation (ASF) under one or more
- *  contributor license agreements.  The ASF licenses this file to You
- * under the Apache License, Version 2.0 (the "License"); you may not
- * use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.  For additional information regarding
- * copyright in this work, please see the NOTICE file in the top level
- * directory of this distribution.
- */
-
 package org.apache.roller.planet.business;
 
-import org.apache.roller.RollerException;
-import org.apache.roller.planet.business.fetcher.FeedFetcher;
-import org.apache.roller.weblogger.business.PropertiesManager;
+import org.apache.roller.planet.PlanetException;
+import org.apache.roller.planet.PlanetFeed;
+import org.apache.roller.planet.PlanetFeedMetadata;
+import org.apache.roller.planet.PlanetMember;
+import org.apache.roller.planet.PlanetMetadata;
 
+import java.util.List;
 
 /**
- * The main entry point interface of the Roller business tier.
+ * Interface for planet business logic.
  */
 public interface Planet {
-    
-    /**
-     * Get PlanetManager associated with this Roller instance.
-     */
-     PlanetManager getWebloggerManager();
-    
-    
-    /**
-     * Get PropertiesManager.
-     */
-    PropertiesManager getPropertiesManager();
-    
-    
-    /**
-     * Get the configured URLStrategy.
-     */
-    PlanetURLStrategy getURLStrategy();
-    
-    
-    /**
-     * Get the configured FeedFetcher.
-     */
-    FeedFetcher getFeedFetcher();
-    
-        
-    /**
-     * Flush object states.
-     */
-    void flush() throws RollerException;
-    
-    
-    /**
-     * Initialize any resources necessary for this instance of Roller.
-     */
-    void initialize() throws Exception;
-    
 
     /**
-     * Release any resources associated with a session.
+     * Loads a planet by its id.
+     * 
+     * @param id the id of the planet
+     * @return the loaded planet
+     * @throws PlanetException if the planet cannot be loaded
      */
-    void release();
-    
-    
+    PlanetMetadata loadPlanetById(String id) throws PlanetException;
+
     /**
-     * Shutdown the application.
+     * Creates a new planet.
+     * 
+     * @param metadata the metadata for the new planet
+     * @return the created planet
+     * @throws PlanetException if the planet cannot be created
      */
-    void shutdown();
-    
+    PlanetMetadata createPlanet(PlanetMetadata metadata) throws PlanetException;
+
+    /**
+     * Updates an existing planet.
+     * 
+     * @param metadata the updated metadata for the planet
+     * @return the updated planet
+     * @throws PlanetException if the planet cannot be updated
+     */
+    PlanetMetadata updatePlanet(PlanetMetadata metadata) throws PlanetException;
+
+    /**
+     * Deletes a planet by its id.
+     * 
+     * @param id the id of the planet to delete
+     * @throws PlanetException if the planet cannot be deleted
+     */
+    void deletePlanet(String id) throws PlanetException;
+
+    /**
+     * Adds a feed to a planet.
+     * 
+     * @param planetId the id of the planet
+     * @param feed the feed to add
+     * @return the added feed
+     * @throws PlanetException if the feed cannot be added
+     */
+    PlanetFeed addFeedToPlanet(String planetId, PlanetFeed feed) throws PlanetException;
+
+    /**
+     * Removes a feed from a planet.
+     * 
+     * @param planetId the id of the planet
+     * @param feedId the id of the feed to remove
+     * @throws PlanetException if the feed cannot be removed
+     */
+    void removeFeedFromPlanet(String planetId, String feedId) throws PlanetException;
+
+    /**
+     * Gets the feeds for a planet.
+     * 
+     * @param planetId the id of the planet
+     * @return the feeds for the planet
+     * @throws PlanetException if the feeds cannot be retrieved
+     */
+    List<PlanetFeed> getFeedsForPlanet(String planetId) throws PlanetException;
+
+    /**
+     * Loads a feed by its id.
+     * 
+     * @param feedId the id of the feed
+     * @return the loaded feed
+     * @throws PlanetException if the feed cannot be loaded
+     */
+    PlanetFeed loadFeedById(String feedId) throws PlanetException;
+
+    /**
+     * Adds a member to a planet.
+     * 
+     * @param planetId the id of the planet
+     * @param member the member to add
+     * @return the added member
+     * @throws PlanetException if the member cannot be added
+     */
+    PlanetMember addMemberToPlanet(String planetId, PlanetMember member) throws PlanetException;
+
+    /**
+     * Removes a member from a planet.
+     * 
+     * @param planetId the id of the planet
+     * @param memberId the id of the member to remove
+     * @throws PlanetException if the member cannot be removed
+     */
+    void removeMemberFromPlanet(String planetId, String memberId) throws PlanetException;
+
+    /**
+     * Gets the members for a planet.
+     * 
+     * @param planetId the id of the planet
+     * @return the members for the planet
+     * @throws PlanetException if the members cannot be retrieved
+     */
+    List<PlanetMember> getMembersForPlanet(String planetId) throws PlanetException;
+
+    /**
+     * Loads a member by its id.
+     * 
+     * @param memberId the id of the member
+     * @return the loaded member
+     * @throws PlanetException if the member cannot be loaded
+     */
+    PlanetMember loadMemberById(String memberId) throws PlanetException;
+
+    /**
+     * Creates a new feed metadata object.
+     * 
+     * @param title the title of the feed
+     * @param link the link of the feed
+     * @return the created feed metadata
+     */
+    PlanetFeedMetadata createFeedMetadata(String title, String link);
+
+    /**
+     * Creates a new planet metadata object.
+     * 
+     * @param title the title of the planet
+     * @param link the link of the planet
+     * @return the created planet metadata
+     */
+    PlanetMetadata createPlanetMetadata(String title, String link);
 }
-

@@ -1,65 +1,100 @@
-/*
- * Licensed to the Apache Software Foundation (ASF) under one or more
- *  contributor license agreements.  The ASF licenses this file to You
- * under the Apache License, Version 2.0 (the "License"); you may not
- * use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.  For additional information regarding
- * copyright in this work, please see the NOTICE file in the top level
- * directory of this distribution.
- */
-
 package org.apache.roller.planet.business.updater;
 
-import org.apache.roller.planet.pojos.PlanetGroup;
-import org.apache.roller.planet.pojos.Subscription;
+import org.apache.roller.planet.PlanetManager;
+import org.apache.roller.planet.business.Planet;
+import org.apache.roller.planet.business.PlanetFactory;
+import org.apache.roller.planet.business.Entry;
+import org.apache.roller.planet.business.Feed;
+import org.apache.roller.planet.business.FeedFactory;
+import org.apache.roller.planet.business.UpdateStatus;
+import org.apache.roller.planet.exceptions.PlanetException;
+import org.apache.roller.planet.utils.RSSUtils;
+import org.apache.roller.planet.utils.FeedUtils;
+import org.apache.roller.planet.utils.DateUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
+public class FeedUpdater {
 
-/**
- * A FeedUpdater is responsible for processing the updates of all Subscriptions
- * and their entries.  It is intended to combine the use of the FeedFetcher for
- * pulling fresh feed data with the PlanetManager for updating and persisting 
- * the updated data.
- *
- * NOTE: it must be explicitly stated that the operations of the FeedUpdater are
- * *not* considered atomic and they are *not* guaranteed to happen synchronously.
- * So callers of these methods should bear that in mind when using this class.
- */
-public interface FeedUpdater {
-    
-    /**
-     * Update a single Subscription.
-     *
-     * This method takes in an existing Subscription and updates it with
-     * the data from the subscriptions source after fetching an updated version 
-     * of the subscription.
-     *
-     * @param sub The PlanetSubscription to be updated.
-     * @throws org.apache.roller.planet.business.fetcher.FetcherException If there is an error updating the subscription.
-     */
-    void updateSubscription(Subscription sub) throws UpdaterException;
-    
-    
-    /**
-     * Update all Subscriptions in the system.
-     *
-     * @throws UpdaterException If there is an error during the update and the operation cannot continue.
-     */
-    void updateSubscriptions() throws UpdaterException;
-    
-    
-    /**
-     * Update all Subscriptions that are part of the specified group.
-     *
-     * @throws UpdaterException If there is an error during the update and the operation cannot continue.
-     */
-    void updateSubscriptions(PlanetGroup group) throws UpdaterException;
-    
+    private static final Logger logger = LoggerFactory.getLogger(FeedUpdater.class);
+
+    private final PlanetManager planetManager;
+    private final PlanetFactory planetFactory;
+    private final FeedFactory feedFactory;
+
+    public FeedUpdater(PlanetManager planetManager, PlanetFactory planetFactory, FeedFactory feedFactory) {
+        this.planetManager = planetManager;
+        this.planetFactory = planetFactory;
+        this.feedFactory = feedFactory;
+    }
+
+    public void updateFeed(Feed feed) throws PlanetException {
+        updateFeed(feed, false);
+    }
+
+    public void updateFeed(Feed feed, boolean forceUpdate) throws PlanetException {
+        try {
+            checkFeedForUpdate(feed, forceUpdate);
+        } catch (Exception e) {
+            throw new PlanetException("Error updating feed", e);
+        }
+    }
+
+    private void checkFeedForUpdate(Feed feed, boolean forceUpdate) {
+        if (feed == null) {
+            logger.warn("Feed is null, cannot update");
+            return;
+        }
+
+        planetManager.startUpdate(feed);
+
+        if (forceUpdate || shouldUpdateFeed(feed)) {
+            Planet planet = planetFactory.getPlanet(feed.getPlanetId());
+            processFeedUpdate(planet, feed);
+        }
+
+        planetManager.endUpdate(feed);
+    }
+
+    private boolean shouldUpdateFeed(Feed feed) {
+        return DateUtils.timeSinceFeedUpdate(feed.getLastUpdated()) > feed.getUpdateInterval();
+    }
+
+    private void processFeedUpdate(Planet planet, Feed feed) {
+        UpdateStatus updateStatus = readFeedAndUpdateEntries(planet, feed);
+
+        if (updateStatus.getNewEntryCount() > 0) {
+            planetManager.addNewEntriesToPlanet(planet, updateStatus.getNewEntries());
+        }
+
+        planetManager.updatePlanet(planet);
+        planetManager.updateFeed(feed);
+    }
+
+    private UpdateStatus readFeedAndUpdateEntries(Planet planet, Feed feed) {
+        UpdateStatus updateStatus = new UpdateStatus();
+
+        try {
+            FeedUtils.parseFeed(feed.getUrl(), feedProcessor -> {
+                Entry entry = feedProcessor.getEntry();
+                if (isEntryNew(planet, entry)) {
+                    updateStatus.addNewEntry(entry);
+                    createEntry(feed, entry);
+                }
+            });
+
+        } catch (Exception e) {
+            logger.error("Error reading feed: {}", e.getMessage());
+        }
+
+        return updateStatus;
+    }
+
+    private boolean isEntryNew(Planet planet, Entry entry) {
+        return !planet.getEntries().contains(entry);
+    }
+
+    private void createEntry(Feed feed, Entry entry) {
+        planetManager.addEntryToFeed(feed, entry);
+    }
 }

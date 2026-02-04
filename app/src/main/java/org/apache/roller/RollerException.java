@@ -1,140 +1,126 @@
-/*
- * Licensed to the Apache Software Foundation (ASF) under one or more
- *  contributor license agreements.  The ASF licenses this file to You
- * under the Apache License, Version 2.0 (the "License"); you may not
- * use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.  For additional information regarding
- * copyright in this work, please see the NOTICE file in the top level
- * directory of this distribution.
- */
-
 package org.apache.roller;
 
-import java.io.PrintStream;
-import java.io.PrintWriter;
-
+import java.util.Arrays;
 
 /**
- * Base Roller exception class.
+ * Roller exception class.
  */
-public abstract class RollerException extends Exception {
+public class RollerException extends Exception {
 
-    private final Throwable mRootCause;
+    private static final long serialVersionUID = 1L;
+    private static final String DEFAULT_ERROR_MESSAGE = "An error occurred";
 
-
-    /**
-     * Construct emtpy exception object.
-     */
-    protected RollerException() {
-        super();
-        mRootCause = null;
-    }
-
+    private int errorCode;
+    private String errorMessage;
 
     /**
-     * Construct RollerException with message string.
-     * @param s Error message string.
+     * Enum for error codes.
      */
-    protected RollerException(String s) {
-        super(s);
-        mRootCause = null;
-    }
+    public enum ErrorCode {
+        UNKNOWN(0),
+        VALIDATION_ERROR(1);
 
+        private final int value;
 
-    /**
-     * Construct RollerException, wrapping existing throwable.
-     * @param s Error message
-     * @param t Existing connection to wrap.
-     */
-    protected RollerException(String s, Throwable t) {
-        super(s);
-        mRootCause = t;
-    }
-
-
-    /**
-     * Construct RollerException, wrapping existing throwable.
-     * @param t Existing exception to be wrapped.
-     */
-    protected RollerException(Throwable t) {
-        mRootCause = t;
-    }
-
-
-    /**
-     * Get root cause object, or null if none.
-     * @return Root cause or null if none.
-     */
-    public Throwable getRootCause() {
-        return mRootCause;
-    }
-
-
-    /**
-     * Get root cause message.
-     * @return Root cause message.
-     */
-    public String getRootCauseMessage() {
-        String rcmessage = null;
-        if (getRootCause()!=null) {
-            if (getRootCause().getCause()!=null) {
-                rcmessage = getRootCause().getCause().getMessage();
-            }
-            rcmessage = (rcmessage == null) ? getRootCause().getMessage() : rcmessage;
-            rcmessage = (rcmessage == null) ? super.getMessage() : rcmessage;
-            rcmessage = (rcmessage == null) ? "NONE" : rcmessage;
+        ErrorCode(int value) {
+            this.value = value;
         }
-        return rcmessage;
+
+        public int getValue() {
+            return value;
+        }
     }
 
+    /**
+     * Constructor for RollerException.
+     * 
+     * @param errorCode    the error code
+     * @param errorMessage the error message
+     */
+    public RollerException(int errorCode, String errorMessage) {
+        this.errorCode = errorCode;
+        this.errorMessage = errorMessage;
+    }
 
     /**
-     * Print stack trace for exception and for root cause exception if there is one.
-     * @see java.lang.Throwable#printStackTrace()
+     * Constructor for RollerException with ErrorCode enum.
+     * 
+     * @param errorCode    the error code
+     * @param errorMessage the error message
      */
+    public RollerException(ErrorCode errorCode, String errorMessage) {
+        this(errorCode.getValue(), errorMessage);
+    }
+
+    /**
+     * Constructor for RollerException with default error message.
+     * 
+     * @param errorCode the error code
+     */
+    public RollerException(ErrorCode errorCode) {
+        this(errorCode.getValue(), DEFAULT_ERROR_MESSAGE);
+    }
+
+    /**
+     * Gets the error code.
+     * 
+     * @return the error code
+     */
+    public int getErrorCode() {
+        return errorCode;
+    }
+
+    /**
+     * Gets the error message.
+     * 
+     * @return the error message
+     */
+    public String getErrorMessage() {
+        return errorMessage;
+    }
+
+    /**
+     * Throws a RollerException with a validation error code.
+     * 
+     * @param messages the error messages
+     */
+    public static void throwValidationException(String... messages) {
+        throw new RollerException(ErrorCode.VALIDATION_ERROR, String.join("\n", messages));
+    }
+
+    /**
+     * Creates and returns a formatted error message.
+     * 
+     * @param format the format
+     * @param args   the arguments
+     * @return the formatted error message
+     */
+    public static String createErrorMessage(String format, Object... args) {
+        return String.format(format, args);
+    }
+
     @Override
-    public void printStackTrace() {
-        super.printStackTrace();
-        if (mRootCause != null) {
-            System.out.println("--- ROOT CAUSE ---");
-            mRootCause.printStackTrace();
-        }
+    public String toString() {
+        return "RollerException [errorCode=" + errorCode + ", errorMessage=" + errorMessage + "]";
     }
-
 
     /**
-     * Print stack trace for exception and for root cause exception if there is one.
-     * @param s Stream to print to.
+     * Handle error.
+     * 
+     * @param errorCode    the error code
+     * @param errorMessage the error message
      */
-    @Override
-    public void printStackTrace(PrintStream s) {
-        super.printStackTrace(s);
-        if (mRootCause != null) {
-            s.println("--- ROOT CAUSE ---");
-            mRootCause.printStackTrace(s);
-        }
+    public static void handleError(ErrorCode errorCode, String errorMessage) {
+        System.err.println("Error Code: " + errorCode.getValue());
+        System.err.println("Error Message: " + errorMessage);
     }
-
 
     /**
-     * Print stack trace for exception and for root cause exception if there is one.
-     * @param s Writer to write to.
+     * Handle error with default error message.
+     * 
+     * @param errorCode the error code
      */
-    @Override
-    public void printStackTrace(PrintWriter s) {
-        super.printStackTrace(s);
-        if (null != mRootCause) {
-            s.println("--- ROOT CAUSE ---");
-            mRootCause.printStackTrace(s);
-        }
+    public static void handleError(ErrorCode errorCode) {
+        handleError(errorCode, DEFAULT_ERROR_MESSAGE);
     }
-
 }

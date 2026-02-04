@@ -1,153 +1,95 @@
-/*
- * Licensed to the Apache Software Foundation (ASF) under one or more
- *  contributor license agreements.  The ASF licenses this file to You
- * under the Apache License, Version 2.0 (the "License"); you may not
- * use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.  For additional information regarding
- * copyright in this work, please see the NOTICE file in the top level
- * directory of this distribution.
- */
-
 package org.apache.roller.planet.config;
 
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.io.StringWriter;
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
-import org.apache.roller.weblogger.business.PropertiesManager;
-import org.apache.roller.weblogger.business.WebloggerFactory;
-import org.apache.roller.weblogger.config.runtime.RuntimeConfigDefs;
-import org.apache.roller.weblogger.config.runtime.RuntimeConfigDefsParser;
-import org.apache.roller.weblogger.planet.ui.PlanetConfig;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.roller.planet.PlanetConstants;
+import org.apache.roller.planet.PlanetRuntimeException;
+import org.apache.roller.planet.config.validator.PlanetConfigurationValidator;
+import org.apache.roller.planet.model.Planet;
+import org.apache.roller.planet.model.PlanetChannel;
+import org.apache.roller.planet.model.PlanetWebsite;
 
+import java.util.List;
+import java.util.Map;
 
-/**
- * Planet specific runtime properties.
- */
 public class PlanetRuntimeConfig {
 
-    private static final Log log = LogFactory.getLog(PlanetRuntimeConfig.class);
+    private static final int DEFAULT_FEED_FETCH_ATTEMPTS = 3;
+    private static final int DEFAULT_FEED_FETCH_DELAY = 1000;
+    private static final int DEFAULT_FEED_MAX_ENTRIES = 10;
 
-    private static final String runtimeConfig = "/org/apache/roller/planet/config/planetRuntimeConfigDefs.xml";
-    private static RuntimeConfigDefs configDefs = null;
+    private Planet planet;
+    private PlanetConfigurationValidator validator;
 
-    // prevent instantiations
-    private PlanetRuntimeConfig() {}
-
-
-    /**
-     * Retrieve a single property from the PropertiesManager ... returns null
-     * if there is an error
-     **/
-    public static String getProperty(String name) {
-
-        String value = null;
-
-        try {
-            PropertiesManager pmgr = WebloggerFactory.getWeblogger().getPropertiesManager();
-            value = pmgr.getProperty(name).getValue();
-        } catch(Exception e) {
-            log.warn("Trouble accessing property: "+name, e);
-        }
-
-        log.debug("fetched property ["+name+"="+value+"]");
-
-        return value;
+    public PlanetRuntimeConfig(Planet planet, PlanetConfigurationValidator validator) {
+        this.planet = planet;
+        this.validator = validator;
     }
 
-
-    /**
-     * Retrieve a property as a boolean ... defaults to false if there is an error
-     **/
-    public static boolean getBooleanProperty(String name) {
-
-        // get the value first, then convert
-        String value = PlanetRuntimeConfig.getProperty(name);
-
-        if(value == null)
-            return false;
-
-        return Boolean.parseBoolean(value);
+    public void validateConfiguration() {
+        validator.validate(planet);
     }
 
-
-    /**
-     * Retrieve a property as an int ... defaults to -1 if there is an error
-     **/
-    public static int getIntProperty(String name) {
-
-        // get the value first, then convert
-        String value = PlanetRuntimeConfig.getProperty(name);
-
-        if(value == null)
-            return -1;
-
-        int intval = -1;
-        try {
-            intval = Integer.parseInt(value);
-        } catch(Exception e) {
-            log.warn("Trouble converting to int: "+name, e);
-        }
-
-        return intval;
+    public void configurePlanet() {
+        configureChannels();
+        configureWebsites();
+        configureFeed();
     }
 
-
-    public static RuntimeConfigDefs getRuntimeConfigDefs() {
-
-        if(configDefs == null) {
-
-            // unmarshall the config defs file
-            try {
-                InputStream is =
-                        PlanetRuntimeConfig.class.getResourceAsStream(runtimeConfig);
-
-                RuntimeConfigDefsParser parser = new RuntimeConfigDefsParser();
-                configDefs = parser.unmarshall(is);
-
-            } catch(Exception e) {
-                // error while parsing :(
-                log.error("Error parsing runtime config defs", e);
+    private void configureChannels() {
+        List<PlanetChannel> channels = planet.getChannels();
+        for (PlanetChannel channel : channels) {
+            if (StringUtils.isEmpty(channel.getTitle())) {
+                throw new PlanetRuntimeException("Channel title is required");
             }
-
         }
-
-        return configDefs;
     }
 
-
-    /**
-     * Get the runtime configuration definitions XML file as a string.
-     *
-     * This is basically a convenience method for accessing this file.
-     * The file itself contains meta-data about what configuration
-     * properties we change at runtime via the UI and how to setup
-     * the display for editing those properties.
-     */
-    public static String getRuntimeConfigDefsAsString() {
-
-        log.debug("Trying to load runtime config defs file");
-
-        try {
-            StringWriter configString = new StringWriter();
-            try (InputStreamReader reader = new InputStreamReader(PlanetConfig.class.getResourceAsStream(runtimeConfig))) {
-                reader.transferTo(configString);
+    private void configureWebsites() {
+        List<PlanetWebsite> websites = planet.getWebsites();
+        for (PlanetWebsite website : websites) {
+            if (StringUtils.isEmpty(website.getUrl())) {
+                throw new PlanetRuntimeException("Website URL is required");
             }
-            return configString.toString();
-        } catch(Exception e) {
-            log.error("Error loading runtime config defs file", e);
         }
-
-        return "";
     }
 
+    private void configureFeed() {
+        int feedFetchAttempts = getFeedFetchAttempts();
+        int feedFetchDelay = getFeedFetchDelay();
+        int feedMaxEntries = getFeedMaxEntries();
+
+        if (feedFetchAttempts < 1) {
+            throw new PlanetRuntimeException("Feed fetch attempts must be greater than 0");
+        }
+        if (feedFetchDelay < 0) {
+            throw new PlanetRuntimeException("Feed fetch delay must be greater than or equal to 0");
+        }
+        if (feedMaxEntries < 1) {
+            throw new PlanetRuntimeException("Feed max entries must be greater than 0");
+        }
+    }
+
+    private int getFeedFetchAttempts() {
+        String attempts = planet.getFeedFetchAttempts();
+        return attempts != null ? Integer.parseInt(attempts) : DEFAULT_FEED_FETCH_ATTEMPTS;
+    }
+
+    private int getFeedFetchDelay() {
+        String delay = planet.getFeedFetchDelay();
+        return delay != null ? Integer.parseInt(delay) : DEFAULT_FEED_FETCH_DELAY;
+    }
+
+    private int getFeedMaxEntries() {
+        String maxEntries = planet.getFeedMaxEntries();
+        return maxEntries != null ? Integer.parseInt(maxEntries) : DEFAULT_FEED_MAX_ENTRIES;
+    }
+
+    public void loadPlanetConfig() {
+        // Load planet configuration from database or file
+        // For demonstration purposes, assume it's loaded from a map
+        Map<String, String> config = planet.getConfig();
+        planet.setFeedFetchAttempts(config.get(PlanetConstants.FEED_FETCH_ATTEMPTS));
+        planet.setFeedFetchDelay(config.get(PlanetConstants.FEED_FETCH_DELAY));
+        planet.setFeedMaxEntries(config.get(PlanetConstants.FEED_MAX_ENTRIES));
+    }
 }

@@ -1,157 +1,112 @@
-/*
- * Licensed to the Apache Software Foundation (ASF) under one or more
- *  contributor license agreements.  The ASF licenses this file to You
- * under the Apache License, Version 2.0 (the "License"); you may not
- * use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.  For additional information regarding
- * copyright in this work, please see the NOTICE file in the top level
- * directory of this distribution.
- */
-
 package org.apache.roller.planet.business;
 
-import java.net.URLDecoder;
-import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
-import java.util.Map;
-import org.apache.roller.weblogger.config.WebloggerRuntimeConfig;
+import org.apache.roller.planet.Planet;
+import org.apache.roller.planet.PlanetManager;
+import org.apache.roller.planet.PlanetURLStrategy;
+import org.apache.roller.planet.PlanetFeed;
+import org.apache.roller.planet.PlanetFeedManager;
+import org.apache.roller.util.URLEncoder;
+import org.apache.roller.util.UrlUtils;
 
-/**
- *
- */
+import java.net.URI;
+import java.net.URISyntaxException;
+import java.util.List;
+
 public class MultiPlanetURLStrategy implements PlanetURLStrategy {
-    
-    
-    /**
-     * Get root url for a given weblog.  Optionally for a certain locale.
-     */
-    @Override
-    public String getPlanetURL(String planet) {
-        
-        if(planet == null) {
-            return null;
-        }
-        
-        StringBuilder url = new StringBuilder();
-        url.append(WebloggerRuntimeConfig.getProperty("site.absoluteurl"));
-        url.append('/').append(planet).append('/');
-        
-        return url.toString();
-    }
-    
-    
-    /**
-     * Get url for a single weblog entry on a given weblog.
-     */
-    @Override
-    public String getPlanetGroupURL(String planet, String group, int pageNum) {
-        
-        if(planet == null || group == null) {
-            return null;
-        }
-        
-        StringBuilder url = new StringBuilder();
-        
-        url.append(getPlanetURL(planet));
-        url.append("group/").append(group).append('/');
-        
-        if(pageNum > 0) {
-            url.append("?page=");
-            url.append(pageNum);
-        }
-        
-        return url.toString();
-    }
-    
-    
-    /**
-     * Get url for a feed on a given weblog.
-     */
-    @Override
-    public String getPlanetGroupFeedURL(String planet, String group, String format) {
-        
-        if(planet == null || group == null) {
-            return null;
-        }
-        
-        StringBuilder url = new StringBuilder();
-        url.append(getPlanetGroupURL(planet, group, -1));
-        url.append("feed/").append(format);
-        
-        return url.toString();
-    }
-    
-    
-    /**
-     * Get url for opml file on a given planet group.
-     */
-    @Override
-    public String getPlanetGroupOpmlURL(String planet, String group) {
-        
-        if(planet == null || group == null) {
-            return null;
-        }
-        
-        StringBuilder url = new StringBuilder();
-        url.append(getPlanetGroupURL(planet, group, -1));
-        url.append("opml");
-        
-        return url.toString();
-    }
-    
-    
-    /**
-     * Compose a map of key=value params into a query string.
-     */
-    @Override
-    public String getQueryString(Map<String, String> params) {
-        
-        if(params == null) {
-            return null;
-        }
-        
-        StringBuilder queryString = new StringBuilder();
 
-        for (Map.Entry<String, String> entry : params.entrySet()) {
+    private static final int PATH_LENGTH = 38;
+    private static final int PATH_SEGMENT_LENGTH = 38;
 
-            if (queryString.length() == 0) {
-                queryString.append('?');
-            } else {
-                queryString.append('&');
-            }
+    private final PlanetManager planetManager;
+    private final PlanetFeedManager planetFeedManager;
 
-            queryString.append(entry.getKey());
-            queryString.append('=');
-            queryString.append(entry.getValue());
+    public MultiPlanetURLStrategy(PlanetManager planetManager, PlanetFeedManager planetFeedManager) {
+        this.planetManager = planetManager;
+        this.planetFeedManager = planetFeedManager;
+    }
+
+    @Override
+    public String getPlanetFeedUrl(Planet planet) {
+        return getBasePlanetUrl(planet) + "/feed";
+    }
+
+    @Override
+    public String getPlanetEntryUrl(Planet planet, String entryId) {
+        return getBasePlanetUrl(planet) + "/entry/" + entryId;
+    }
+
+    @Override
+    public String getPlanetTagUrl(Planet planet, String tag) {
+        return getBasePlanetUrl(planet) + "/tag/" + URLEncoder.encode(tag);
+    }
+
+    @Override
+    public String getPlanetAuthorUrl(Planet planet, String author) {
+        return getBasePlanetUrl(planet) + "/author/" + URLEncoder.encode(author);
+    }
+
+    @Override
+    public String getPlanetSearchUrl(Planet planet, String query) {
+        return getBasePlanetUrl(planet) + "/search/" + URLEncoder.encode(query);
+    }
+
+    private String getBasePlanetUrl(Planet planet) {
+        return getPlanetUrlPath(planet);
+    }
+
+    private String getPlanetUrlPath(Planet planet) {
+        String urlPath = planet.getUrlPattern();
+
+        if (urlPath == null || urlPath.isEmpty()) {
+            urlPath = planet.getId();
         }
 
-        return queryString.toString();
+        return formatUrlPath(urlPath);
     }
-    
-    
-    /**
-     * URL encode a string using UTF-8.
-     */
+
+    private String formatUrlPath(String urlPath) {
+        if (urlPath.length() > PATH_LENGTH) {
+            return formatLongUrlPath(urlPath);
+        } else {
+            return formatShortUrlPath(urlPath);
+        }
+    }
+
+    private String formatLongUrlPath(String urlPath) {
+        return urlPath.substring(0, PATH_SEGMENT_LENGTH) + "/" + urlPath.substring(PATH_SEGMENT_LENGTH);
+    }
+
+    private String formatShortUrlPath(String urlPath) {
+        return urlPath;
+    }
+
     @Override
-    public String encode(String str) {
-        return URLEncoder.encode(str, StandardCharsets.UTF_8);
+    public String getPlanetUrl(Planet planet) {
+        try {
+            URI uri = new URI(getBasePlanetUrl(planet));
+            return UrlUtils.getAbsoluteUrl(uri.toString());
+        } catch (URISyntaxException e) {
+            throw new RuntimeException(e);
+        }
     }
-    
-    
-    /**
-     * URL decode a string using UTF-8.
-     */
+
     @Override
-    public String decode(String str) {
-        return URLDecoder.decode(str, StandardCharsets.UTF_8);
+    public String getPlanetFeedUrl(PlanetFeed planetFeed) {
+        return getPlanetFeedUrl(planetFeed.getPlanet()) + "/" + planetFeed.getFeedType();
     }
-    
+
+    @Override
+    public List<String> getPlanetFeeds(Planet planet) {
+        List<String> feeds = planetManager.getPlanetFeeds(planet);
+
+        if (feeds == null || feeds.isEmpty()) {
+            return getPlanetDefaultFeeds(planet);
+        }
+
+        return feeds;
+    }
+
+    private List<String> getPlanetDefaultFeeds(Planet planet) {
+        return List.of("atom", "rss");
+    }
 }

@@ -1,72 +1,97 @@
-/*
- * Licensed to the Apache Software Foundation (ASF) under one or more
- *  contributor license agreements.  The ASF licenses this file to You
- * under the Apache License, Version 2.0 (the "License"); you may not
- * use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.  For additional information regarding
- * copyright in this work, please see the NOTICE file in the top level
- * directory of this distribution.
- */
-
 package org.apache.roller.planet.business.fetcher;
 
+import org.apache.roller.planet.PlanetUtils;
+import org.apache.roller.planet.business.Feed;
+import org.apache.roller.planet.business.FetchResult;
+import org.apache.roller.planet.business.PlanetManager;
+import org.apache.roller.planet.business.UrlFeedFetcher;
+import org.apache.roller.planet.business.XmlParser;
+import org.apache.roller.planet.business.exception.FeedFetcherException;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.net.MalformedURLException;
+import java.net.URL;
 import java.util.Date;
-import org.apache.roller.planet.pojos.Subscription;
+import java.util.List;
+import java.util.logging.Logger;
 
+public class FeedFetcher {
 
-/**
- * A FeedFetcher is what is responsible for actually pulling subscriptions from
- * their source and transforming them into Roller Planet Subscriptions and Entries.
- * 
- * It does not perform any persistence of feeds.
- */
-public interface FeedFetcher {
-    
-    /**
-     * Fetch a single subscription.
-     *
-     * This method takes in a feed url and is expected to fetch that feed and
-     * return a transient instance of a Subscription representing the
-     * given feed.
-     *
-     * It is important to understand that this method will *NOT* return a 
-     * persistent version of an existing Subscription if it happens to
-     * exist.  This method is only here to pull feeds from their source 
-     * so that they may be used in any way desired by the rest of the system.
-     *
-     * @param feedURL The feed url to use when fetching the subscription.
-     * @return Subscription The fetched subscription.
-     * @throws FetcherException If there is an error fetching the subscription.
-     */
-    Subscription fetchSubscription(String feedURL) throws FetcherException;
-    
-    
-    /**
-     * Conditionally fetch a single subscription.
-     *
-     * This method takes in a feed url and its known last modified date and should
-     * return a transient Subscription for the feed only if the given feed has
-     * been updated since the lastModified date.  This method is meant provide
-     * a more efficient way to fetch subscriptions which are being updated so
-     * subscriptions are not continually fetched when unnecessary.
-     *
-     * It is important to understand that this method will *NOT* return a 
-     * persistent version of an existing Subscription if it happens to
-     * exist.  This method is only here to pull feeds from their source 
-     * so that they may be used in any way desired by the rest of the system.
-     *
-     * @param feedURL The feed url to use when fetching the subscription.
-     * @return Subscription The fetched subscription.
-     * @throws FetcherException If there is an error fetching the subscription.
-     */
-    Subscription fetchSubscription(String feedURL, Date lastModified) throws FetcherException;
+    private static final String APPLICATION_ATOM = "application/atom+xml";
+    private static final String APPLICATION_RSS = "application/rss+xml";
+    private static final String TEXT_XML = "text/xml";
+    private static final String APPLICATION_XML = "application/xml";
 
+    private Logger logger = Logger.getLogger(FeedFetcher.class.getName());
+    private PlanetManager planetManager;
+
+    public FeedFetcher(PlanetManager planetManager) {
+        this.planetManager = planetManager;
+    }
+
+    public FetchResult fetch(Feed feed) throws FeedFetcherException {
+        if (feed == null) {
+            return new FetchResult(false, "Feed is null");
+        }
+        try {
+            URL url = new URL(feed.getUrl());
+            return fetch(url, feed);
+        } catch (MalformedURLException e) {
+            throw new FeedFetcherException("Error fetching feed", e);
+        }
+    }
+
+    private FetchResult fetch(URL url, Feed feed) throws FeedFetcherException {
+        InputStream inputStream = null;
+        try {
+            inputStream = url.openStream();
+            return parseFeed(inputStream, feed);
+        } catch (IOException e) {
+            throw new FeedFetcherException("Error fetching feed", e);
+        } finally {
+            if (inputStream != null) {
+                try {
+                    inputStream.close();
+                } catch (IOException e) {
+                    logger.warning("Error closing input stream");
+                }
+            }
+        }
+    }
+
+    private FetchResult parseFeed(InputStream inputStream, Feed feed) throws FeedFetcherException {
+        XmlParser parser = new XmlParser();
+        parser.parse(inputStream);
+        String contentType = parser.getContentType();
+        if (isSupportedContentType(contentType)) {
+            if (contentType.equals(APPLICATION_ATOM)) {
+                return parseAtomFeed(parser, feed);
+            } else if (contentType.equals(APPLICATION_RSS) || contentType.equals(TEXT_XML) || contentType.equals(APPLICATION_XML)) {
+                return parseRssFeed(parser, feed);
+            }
+        }
+        return new FetchResult(false, "Unsupported content type: " + contentType);
+    }
+
+    private boolean isSupportedContentType(String contentType) {
+        return contentType.equals(APPLICATION_ATOM) ||
+                contentType.equals(APPLICATION_RSS) ||
+                contentType.equals(TEXT_XML) ||
+                contentType.equals(APPLICATION_XML);
+    }
+
+    private FetchResult parseAtomFeed(XmlParser parser, Feed feed) throws FeedFetcherException {
+        List<org.apache.roller.planet.business.Entry> entries = parser.parseAtomEntries();
+        feed.setUpdated(new Date());
+        planetManager.updateFeed(feed);
+        return new FetchResult(true, "", entries);
+    }
+
+    private FetchResult parseRssFeed(XmlParser parser, Feed feed) throws FeedFetcherException {
+        List<org.apache.roller.planet.business.Entry> entries = parser.parseRssEntries();
+        feed.setUpdated(new Date());
+        planetManager.updateFeed(feed);
+        return new FetchResult(true, "", entries);
+    }
 }

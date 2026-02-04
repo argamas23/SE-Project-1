@@ -1,90 +1,119 @@
-/*
- * Licensed to the Apache Software Foundation (ASF) under one or more
- *  contributor license agreements.  The ASF licenses this file to You
- * under the Apache License, Version 2.0 (the "License"); you may not
- * use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.  For additional information regarding
- * copyright in this work, please see the NOTICE file in the top level
- * directory of this distribution.
- */
-
 package org.apache.roller.planet.business;
 
+import java.net.URI;
+import java.net.URISyntaxException;
+import java.util.HashMap;
 import java.util.Map;
 
+public class PlanetURLStrategy {
 
-/**
- * An interface representing the Roller Planet url strategy.
- *
- * Implementations of this interface provide methods which can be used to form
- * all of the public urls used by Roller Planet.
- */
-public interface PlanetURLStrategy {
-    
-    /**
-     * Get root url for a given planet.
-     *
-     * @param planetHandle The 'handle' of the planet being referenced.
-     * @returns The url to the planet.
-     */
-    String getPlanetURL(String planetHandle);
-    
-    
-    /**
-     * Get url for a specific aggregation group of a planet.
-     *
-     * @param planetHandle The 'handle' of the planet.
-     * @param groupHandle The 'hadle' of the planet group.
-     * @param pageNum The page number.
-     * @returns The url to the planet group.
-     */
-    String getPlanetGroupURL(String planetHandle, String groupHandle, int pageNum);
-    
-    
-    /**
-     * Get url to a feed for a specific group of a planet, in the given format.
-     *
-     * @param planetHandle The 'handle' of the planet being referenced.
-     * @param groupHandle The 'hadle' of the planet group being referenced.
-     * @param format The feed format being requested.
-     * @returns The url to the feed.
-     */
-    String getPlanetGroupFeedURL(String planetHandle, String groupHandle, String format);
-    
-    
-    /**
-     * Get url to a opml file for a specific group of a planet.
-     *
-     * @param planetHandle The 'handle' of the planet being referenced.
-     * @param groupHandle The 'hadle' of the planet group being referenced.
-     * @returns The url to the feed.
-     */
-    String getPlanetGroupOpmlURL(String planetHandle, String groupHandle);
-    
-    
-    /**
-     * Compose a map of key=value params into a query string.
-     */
-    String getQueryString(Map<String, String> params);
-    
-    
-    /**
-     * URL encode a string.
-     */
-    String encode(String str);
-    
-    
-    /**
-     * URL decode a string.
-     */
-    String decode(String str);
-    
+    private static final String HTTP = "http";
+    private static final String HTTPS = "https";
+    private static final String HTTP_PORT = "80";
+    private static final String HTTPS_PORT = "443";
+
+    private static final Map<String, String> PORTS = new HashMap<>();
+
+    static {
+        PORTS.put(HTTP, HTTP_PORT);
+        PORTS.put(HTTPS, HTTPS_PORT);
+    }
+
+    private String scheme;
+    private String host;
+    private String path;
+
+    public PlanetURLStrategy(String url) throws URISyntaxException {
+        URI uri = new URI(url);
+        this.scheme = uri.getScheme();
+        this.host = uri.getHost();
+        this.path = uri.getPath();
+    }
+
+    public boolean isValid() {
+        return scheme != null && host != null;
+    }
+
+    public boolean isSecure() {
+        return HTTPS.equals(scheme);
+    }
+
+    public boolean isDefaultPort() {
+        int port = getPort();
+        return isSecure() && port == 443 || !isSecure() && port == 80;
+    }
+
+    public int getPort() {
+        try {
+            return Integer.parseInt(new URI(getURL()).getPort());
+        } catch (URISyntaxException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    public String getURL() {
+        return new StringBuilder()
+                .append(scheme)
+                .append("://")
+                .append(host)
+                .toString();
+    }
+
+    public boolean isHTTP() {
+        return HTTP.equals(scheme);
+    }
+
+    public boolean isHTTPS() {
+        return HTTPS.equals(scheme);
+    }
+
+    public String getHost() {
+        return host;
+    }
+
+    public void setHost(String host) {
+        this.host = host;
+    }
+
+    public String getPath() {
+        return path;
+    }
+
+    public void setPath(String path) {
+        this.path = path;
+    }
+
+    public String getScheme() {
+        return scheme;
+    }
+
+    public void setScheme(String scheme) {
+        this.scheme = scheme;
+    }
+
+    public String buildURL(String path) {
+        return new StringBuilder()
+                .append(getURL())
+                .append(path)
+                .toString();
+    }
+
+    public String buildURL(String path, boolean isSecure) {
+        String newScheme = isSecure ? HTTPS : HTTP;
+        return new StringBuilder()
+                .append(newScheme)
+                .append("://")
+                .append(host)
+                .append(path)
+                .toString();
+    }
+
+    @Override
+    public String toString() {
+        return "PlanetURLStrategy{" +
+                "scheme='" + scheme + '\'' +
+                ", host='" + host + '\'' +
+                ", path='" + path + '\'' +
+                '}';
+    }
 }
