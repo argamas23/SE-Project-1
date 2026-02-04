@@ -30,3 +30,4 @@ assembly-release/release.sh
 it-selenium/overlays/
 
 .env
+temp/

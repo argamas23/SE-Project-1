@@ -520,7 +520,7 @@ class RefactoringPipeline:
                 )
 
                 print("l356 code_smells = ", code_smells)
-
+                # time.sleep(60)
                 # Update analysis with the code smells
                 analysis[file_path] = code_smells
 
