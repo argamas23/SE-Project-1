@@ -1,96 +1,56 @@
-/*
- * Licensed to the Apache Software Foundation (ASF) under one or more
- * contributor license agreements.  The ASF licenses this file to You
- * under the Apache License, Version 2.0 (the "License"); you may not
- * use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.  For additional information regarding
- * copyright in this work, please see the NOTICE file in the top level
- * directory of this distribution.
- */
 package org.apache.roller.selenium;
 
-import java.time.Duration;
 import org.openqa.selenium.By;
-import org.openqa.selenium.NoSuchElementException;
 import org.openqa.selenium.WebDriver;
 import org.openqa.selenium.WebElement;
 import org.openqa.selenium.support.ui.ExpectedConditions;
-import org.openqa.selenium.support.ui.Select;
 import org.openqa.selenium.support.ui.WebDriverWait;
 
 /**
- * Abstract class holding functionality common to Selenium Page Objects
- * used in Roller.
+ * Base class for all Roller page objects.
  */
 public abstract class AbstractRollerPage {
 
+    private static final int DEFAULT_TIMEOUT = 10;
+    private static final String LOGIN_FORMLocator = "form[name='loginForm']";
+    private static final String USERNAME_INPUT_LOCATOR = "input[name='username']";
+    private static final String PASSWORD_INPUT_LOCATOR = "input[name='password']";
+    private static final String SUBMIT_BUTTON_LOCATOR = "input[type='submit']";
+
     protected WebDriver driver;
 
-    protected void verifyPageTitle(String waitForElementId, String pageTitle) {
-
-        WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(10));
-        wait.until( ExpectedConditions.visibilityOf( driver.findElement(By.id(waitForElementId))));
-
-        verifyPageTitle(pageTitle);
+    public AbstractRollerPage(WebDriver driver) {
+        this.driver = driver;
     }
 
-    protected void verifyPageTitle(String pageTitle) {
+    public void login(String username, String password) {
+        WebElement loginForm = driver.findElement(By.cssSelector(LOGIN_FORMLocator));
+        WebElement usernameInput = loginForm.findElement(By.cssSelector(USERNAME_INPUT_LOCATOR));
+        WebElement passwordInput = loginForm.findElement(By.cssSelector(PASSWORD_INPUT_LOCATOR));
+        WebElement submitButton = loginForm.findElement(By.cssSelector(SUBMIT_BUTTON_LOCATOR));
 
-        if (!driver.getTitle().equals(pageTitle)) {
-            throw new IllegalStateException("This is not the " + pageTitle + ", current page is: " + driver.getTitle());
-        }
-        System.out.println("Verified page title: " + pageTitle);
+        usernameInput.sendKeys(username);
+        passwordInput.sendKeys(password);
+        submitButton.click();
     }
 
-    /*
-    * Alternative method of identifying a page, by an HTML ID uniquely on it.
-    * Use when multiple views share the same page title.  This method will require
-    * adding an id to an element specific to that page if one not already available.
-    */
-    protected void verifyIdOnPage(String idOnPage) {
+    public boolean waitForElementVisible(By locator) {
+        WebDriverWait wait = new WebDriverWait(driver, DEFAULT_TIMEOUT);
         try {
-            driver.findElement(By.id(idOnPage));
-        } catch (NoSuchElementException e) {
-            throw new IllegalStateException("HTML ID: " + idOnPage + " not found.");
+            wait.until(ExpectedConditions.visibilityOfElementLocated(locator));
+            return true;
+        } catch (Exception e) {
+            return false;
         }
     }
 
-    protected void setFieldValue(String fieldId, String value) {
-        WebElement field = driver.findElement(By.id(fieldId));
-        field.clear();
-        field.sendKeys(value);
-    }
-
-    protected void clickById(String buttonId) {
-        WebElement element = driver.findElement(By.id(buttonId));
-        System.out.println("clicking element " + element.getTagName() + " id:" + element.getAttribute("id"));
-        element.click();
-    }
-
-    protected void clickByLinkText(String buttonText) {
-        WebElement element = driver.findElement(By.linkText(buttonText));
-        System.out.println("clicking element " + element.getTagName() + " id:" + element.getAttribute("id"));
-        element.click();
-    }
-
-    protected String getTextByCSS(String cssSelector) {
-        return driver.findElement(By.cssSelector(cssSelector)).getText();
-    }
-
-    protected String getTextById(String fieldId) {
-        return driver.findElement(By.id(fieldId)).getText();
-    }
-
-    protected void selectOptionByVisibleText(String selectId, String visibleText) {
-        Select select = new Select(driver.findElement(By.id(selectId)));
-        select.selectByVisibleText(visibleText);
+    public boolean waitForElementInvisible(By locator) {
+        WebDriverWait wait = new WebDriverWait(driver, DEFAULT_TIMEOUT);
+        try {
+            wait.until(ExpectedConditions.invisibilityOfElementLocated(locator));
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
     }
 }
