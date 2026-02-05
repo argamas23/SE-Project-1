@@ -1,101 +1,108 @@
-/*
- * Licensed to the Apache Software Foundation (ASF) under one or more
- *  contributor license agreements.  The ASF licenses this file to You
- * under the Apache License, Version 2.0 (the "License"); you may not
- * use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.  For additional information regarding
- * copyright in this work, please see the NOTICE file in the top level
- * directory of this distribution.
- */
-/* Created on Jul 16, 2003 */
 package org.apache.roller.weblogger.business.search.lucene;
 
-import java.io.IOException;
-
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
-import org.apache.lucene.index.IndexWriter;
-import org.apache.lucene.index.Term;
-import org.apache.roller.weblogger.WebloggerException;
+import org.apache.roller.weblogger.business.WebloggerFactory;
 import org.apache.roller.weblogger.business.WeblogEntryManager;
-import org.apache.roller.weblogger.business.Weblogger;
+import org.apache.roller.weblogger.business.WeblogManager;
+import org.apache.roller.weblogger.pojos.Weblog;
 import org.apache.roller.weblogger.pojos.WeblogEntry;
+import org.apache.lucene.index.IndexWriter;
+import org.apache.lucene.index.IndexWriterConfig;
+import org.apache.lucene.search.BooleanQuery;
+import org.apache.lucene.search.Query;
+import org.apache.lucene.searchTermVector;
+import org.apache.lucene.store.Directory;
+import org.apache.lucene.store.FSDirectory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-/**
- * An operation that adds a new log entry into the index.
- * 
- * @author Mindaugas Idzelis (min@idzelis.com)
- */
-public class ReIndexEntryOperation extends WriteToIndexOperation {
+import java.io.File;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
 
-    // ~ Static fields/initializers
-    // =============================================
+public class ReIndexEntryOperation {
 
-    private static Log logger = LogFactory.getFactory().getInstance(
-            AddEntryOperation.class);
+    private static final Logger LOGGER = LoggerFactory.getLogger(ReIndexEntryOperation.class);
+    private static final int MAX_RESULT_SET_SIZE = 1000;
+    private static final int PAGE_SIZE = 50;
 
-    // ~ Instance fields
-    // ========================================================
+    private WeblogEntryManager weblogEntryManager;
+    private WeblogManager weblogManager;
 
-    private WeblogEntry data;
-    private Weblogger roller;
-
-    // ~ Constructors
-    // ===========================================================
-
-    /**
-     * Adds a web log entry into the index.
-     */
-    public ReIndexEntryOperation(Weblogger roller, LuceneIndexManager mgr,
-            WeblogEntry data) {
-        super(mgr);
-        this.roller = roller;
-        this.data = data;
+    public ReIndexEntryOperation() {
+        this.weblogEntryManager = WebloggerFactory.getWeblogger().getWeblogEntryManager();
+        this.weblogManager = WebloggerFactory.getWeblogger().getWeblogManager();
     }
 
-    // ~ Methods
-    // ================================================================
-
-    @Override
-    public void doRun() {
-
-        // since this operation can be run on a separate thread we must treat
-        // the weblog object passed in as a detached object which is prone to
-        // lazy initialization problems, so requery for the object now
+    public void reIndexEntry(WeblogEntry entry) {
         try {
-            WeblogEntryManager wMgr = roller.getWeblogEntryManager();
-            this.data = wMgr.getWeblogEntry(this.data.getId());
-        } catch (WebloggerException ex) {
-            logger.error("Error getting weblogentry object", ex);
-            return;
+            Weblog weblog = weblogManager.getWeblog(entry.getWeblog());
+            List<WeblogEntry> entries = new ArrayList<>();
+            entries.add(entry);
+            reIndexEntries(weblog, entries);
+        } catch (Exception e) {
+            LOGGER.error("Error re-indexing entry", e);
         }
+    }
 
-        IndexWriter writer = beginWriting();
-        try {
-            if (writer != null) {
-
-                // Delete Doc
-                Term term = new Term(FieldConstants.ID, data.getId());
-                writer.deleteDocuments(term);
-
-                // Add Doc
-                writer.addDocument(getDocument(data));
+    public void reIndexEntries(Weblog weblog, List<WeblogEntry> entries) {
+        Directory directory = getDirectory(weblog);
+        IndexWriterConfig config = new IndexWriterConfig();
+        try (IndexWriter writer = new IndexWriter(directory, config)) {
+            for (WeblogEntry entry : entries) {
+                reIndexEntry(writer, entry);
             }
         } catch (IOException e) {
-            logger.error("Problems adding/deleting doc to index", e);
-        } finally {
-            if (roller != null) {
-                roller.release();
+            LOGGER.error("Error re-indexing entries", e);
+        }
+    }
+
+    private void reIndexEntry(IndexWriter writer, WeblogEntry entry) throws IOException {
+        Query query = getQuery(entry);
+        writer.deleteDocuments(query);
+        writer.addDocument(getDocument(entry));
+    }
+
+    private Query getQuery(WeblogEntry entry) {
+        BooleanQuery query = new BooleanQuery.Builder()
+                .add(new Term(entry.getId().toString(), "id"))
+                .build();
+        return query;
+    }
+
+    private Document getDocument(WeblogEntry entry) {
+        Document document = new Document();
+        document.add(new TextField("id", entry.getId().toString(), Field.Store.YES));
+        document.add(new TextField("title", entry.getTitle(), Field.Store.YES));
+        document.add(new TextField("content", entry.getContent(), Field.Store.YES));
+        return document;
+    }
+
+    private Directory getDirectory(Weblog weblog) {
+        File file = new File(weblog.getName() + ".index");
+        return FSDirectory.open(file);
+    }
+
+    public void reIndexAllEntries(Weblog weblog) {
+        int startIndex = 0;
+        while (true) {
+            List<WeblogEntry> entries = weblogEntryManager.getRecentWeblogEntries(weblog, startIndex, PAGE_SIZE);
+            if (entries.isEmpty()) {
+                break;
             }
-            endWriting();
+            reIndexEntries(weblog, entries);
+            startIndex += PAGE_SIZE;
+        }
+    }
+
+    public void reIndexEntries(WeblogEntry entry, int startIndex) {
+        try {
+            Weblog weblog = weblogManager.getWeblog(entry.getWeblog());
+            List<WeblogEntry> entries = new ArrayList<>();
+            entries.add(entry);
+            reIndexEntries(weblog, entries);
+        } catch (Exception e) {
+            LOGGER.error("Error re-indexing entries", e);
         }
     }
 }

@@ -1,91 +1,46 @@
-/*
- * Licensed to the Apache Software Foundation (ASF) under one or more
- *  contributor license agreements.  The ASF licenses this file to You
- * under the Apache License, Version 2.0 (the "License"); you may not
- * use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.  For additional information regarding
- * copyright in this work, please see the NOTICE file in the top level
- * directory of this distribution.
- */
-/* Created on Jul 16, 2003 */
 package org.apache.roller.weblogger.business.search.lucene;
 
 import java.io.IOException;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
-import org.apache.lucene.index.IndexWriter;
+import org.apache.roller.weblogger.business.search.IndexManager;
+import org.apache.roller.weblogger.business.search.IndexSession;
+import org.apache.roller.weblogger.business.search.IndexUtil;
+import org.apache.roller.weblogger.business.search.SearchException;
 import org.apache.lucene.index.Term;
-import org.apache.roller.weblogger.WebloggerException;
-import org.apache.roller.weblogger.business.WeblogEntryManager;
-import org.apache.roller.weblogger.business.Weblogger;
-import org.apache.roller.weblogger.pojos.WeblogEntry;
+import org.apache.lucene.queryParser.QueryParser;
+import org.apache.lucene.search.TermQuery;
 
-/**
- * An operation that removes the weblog from the index.
- * 
- * @author Mindaugas Idzelis (min@idzelis.com)
- */
-public class RemoveEntryOperation extends WriteToIndexOperation {
+public class RemoveEntryOperation {
 
-    // ~ Static fields/initializers
-    // =============================================
+    private static final Logger LOGGER = Logger.getLogger(RemoveEntryOperation.class.getName());
+    private static final String FIELD_ENTRY_ID = "entryId";
+    private static final QueryParser QUERYPARSER = new QueryParser(FIELD_ENTRY_ID);
 
-    private static Log logger = LogFactory.getFactory().getInstance(
-            RemoveEntryOperation.class);
+    private final IndexManager indexManager;
 
-    // ~ Instance fields
-    // ========================================================
-
-    private WeblogEntry data;
-    private Weblogger roller;
-
-    // ~ Constructors
-    // ===========================================================
-
-    public RemoveEntryOperation(Weblogger roller, LuceneIndexManager mgr,
-            WeblogEntry data) {
-        super(mgr);
-        this.roller = roller;
-        this.data = data;
+    public RemoveEntryOperation(IndexManager indexManager) {
+        this.indexManager = indexManager;
     }
 
-    // ~ Methods
-    // ================================================================
-
-    @Override
-    public void doRun() {
-
-        // since this operation can be run on a separate thread we must treat
-        // the weblog object passed in as a detached object which is proned to
-        // lazy initialization problems, so requery for the object now
-        try {
-            WeblogEntryManager wMgr = roller.getWeblogEntryManager();
-            this.data = wMgr.getWeblogEntry(this.data.getId());
-        } catch (WebloggerException ex) {
-            logger.error("Error getting weblogentry object", ex);
-            return;
-        }
-
-        IndexWriter writer = beginWriting();
-        try {
-            if (writer != null) {
-                Term term = new Term(FieldConstants.ID, data.getId());
-                writer.deleteDocuments(term);
-            }
+    public void removeEntry(String entryId) {
+        try (IndexSession indexSession = indexManager.openIndexSession()) {
+            removeEntryFromIndex(indexSession, entryId);
         } catch (IOException e) {
-            logger.error("Error deleting doc from index", e);
-        } finally {
-            endWriting();
+            LOGGER.log(Level.SEVERE, "Error removing entry from index", e);
+            throw new SearchException("Error removing entry from index", e);
         }
     }
 
+    private void removeEntryFromIndex(IndexSession indexSession, String entryId) throws IOException {
+        Term term = new Term(FIELD_ENTRY_ID, entryId);
+        TermQuery query = new TermQuery(term);
+
+        IndexUtil.deleteDocuments(indexSession, query);
+    }
+
+    private Term createTerm(String entryId) {
+        return new Term(FIELD_ENTRY_ID, entryId);
+    }
 }

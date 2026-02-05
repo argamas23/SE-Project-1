@@ -1,51 +1,81 @@
-/*
- * Licensed to the Apache Software Foundation (ASF) under one or more
- *  contributor license agreements.  The ASF licenses this file to You
- * under the Apache License, Version 2.0 (the "License"); you may not
- * use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.  For additional information regarding
- * copyright in this work, please see the NOTICE file in the top level
- * directory of this distribution.
- */
-
-/* Created on March 8, 2023 */
-
 package org.apache.roller.weblogger.business.search;
 
+import java.util.ArrayList;
 import java.util.List;
-import java.util.Set;
-import org.apache.roller.weblogger.pojos.wrapper.WeblogEntryWrapper;
 
 public class SearchResultList {
-    int limit;
-    int offset;
-    Set<String> categories;
-    List<WeblogEntryWrapper> results;
-    public SearchResultList(
-        List<WeblogEntryWrapper> results, Set<String> categories, int limit, int offset) {
-        this.results = results;
-        this.categories = categories;
-        this.limit = limit;
-        this.offset = offset;
+
+    private final String query;
+    private final List<SearchResult> results;
+    private final int totalResults;
+    private final int startIndex;
+    private final int endIndex;
+
+    public SearchResultList(String query, int totalResults, int startIndex, int endIndex) {
+        this.query = query;
+        this.results = new ArrayList<>();
+        this.totalResults = totalResults;
+        this.startIndex = startIndex;
+        this.endIndex = endIndex;
     }
-    public int getLimit() {
-        return limit;
+
+    public void addResult(SearchResult result) {
+        this.results.add(result);
     }
-    public int getOffset() {
-        return offset;
+
+    public String getQuery() {
+        return query;
     }
-    public List<WeblogEntryWrapper> getResults() {
-        return results;
+
+    public List<SearchResult> getResults() {
+        return new ArrayList<>(results);
     }
-    public Set<String> getCategories() {
-        return categories;
+
+    public int getTotalResults() {
+        return totalResults;
+    }
+
+    public int getStartIndex() {
+        return startIndex;
+    }
+
+    public int getEndIndex() {
+        return endIndex;
+    }
+
+    public static class SearchResult {
+        private final String title;
+        private final String summary;
+        private final String url;
+        private final String blogName;
+        private final String categoryName;
+
+        public SearchResult(String title, String summary, String url, String blogName, String categoryName) {
+            this.title = title;
+            this.summary = summary;
+            this.url = url;
+            this.blogName = blogName;
+            this.categoryName = categoryName;
+        }
+
+        public String getTitle() {
+            return title;
+        }
+
+        public String getSummary() {
+            return summary;
+        }
+
+        public String getUrl() {
+            return url;
+        }
+
+        public String getBlogName() {
+            return blogName;
+        }
+
+        public String getCategoryName() {
+            return categoryName;
+        }
     }
 }

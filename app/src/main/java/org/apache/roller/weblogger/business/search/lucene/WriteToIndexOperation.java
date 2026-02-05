@@ -1,53 +1,76 @@
-/*
- * Licensed to the Apache Software Foundation (ASF) under one or more
- *  contributor license agreements.  The ASF licenses this file to You
- * under the Apache License, Version 2.0 (the "License"); you may not
- * use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.  For additional information regarding
- * copyright in this work, please see the NOTICE file in the top level
- * directory of this distribution.
- */
-/* Created on Aug 12, 2003 */
 package org.apache.roller.weblogger.business.search.lucene;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
+import org.apache.roller.weblogger.business.WebloggerFactory;
+import org.apache.roller.weblogger.business.Weblogger;
+import org.apache.lucene.analysis.standard.StandardAnalyzer;
+import org.apache.lucene.document.Document;
+import org.apache.lucene.document.Field;
+import org.apache.lucene.document.StringField;
+import org.apache.lucene.document.TextField;
+import org.apache.lucene.index.IndexWriter;
+import org.apache.lucene.index.IndexWriterConfig;
+import org.apache.lucene.store.Directory;
+import org.apache.lucene.store.FSDirectory;
+import org.apache.roller.weblogger.pojos.WeblogEntry;
 
-/**
- * An operation that writes to index.
- * @author Mindaugas Idzelis (min@idzelis.com)
- */
-public abstract class WriteToIndexOperation extends IndexOperation {
-    
-    public WriteToIndexOperation(LuceneIndexManager mgr) {
-        super(mgr);
+import java.io.IOException;
+import java.nio.file.Paths;
+import java.util.Date;
+
+public class WriteToIndexOperation {
+
+    private static final int BATCH_SIZE = 100;
+    private static final int MAX_RETRIES = 3;
+
+    private final WebloggerFactory webloggerFactory;
+    private final StandardAnalyzer analyzer;
+
+    public WriteToIndexOperation(WebloggerFactory webloggerFactory) {
+        this.webloggerFactory = webloggerFactory;
+        this.analyzer = new StandardAnalyzer();
     }
-    
-    private static Log logger =
-            LogFactory.getFactory().getInstance(WriteToIndexOperation.class);
-    
-    @Override
-    public void run() {
-        try {
-            manager.getReadWriteLock().writeLock().lock();
-            logger.debug("Starting search index operation");
-            doRun();
-            logger.debug("Search index operation complete");
 
-        } catch (Exception e) {
-            logger.error("Error acquiring write lock on index", e);
-            
-        } finally {
-            manager.getReadWriteLock().writeLock().unlock();
+    public void execute() throws IOException {
+        try (IndexWriter indexWriter = createIndexWriter()) {
+            int retryCount = 0;
+            while (retryCount <= MAX_RETRIES) {
+                try {
+                    writeEntriesToIndex(indexWriter);
+                    break;
+                } catch (Exception e) {
+                    if (retryCount >= MAX_RETRIES) {
+                        throw e;
+                    }
+                    retryCount++;
+                }
+            }
         }
-        manager.resetSharedReader();
+    }
+
+    private IndexWriter createIndexWriter() throws IOException {
+        Directory directory = FSDirectory.open(Paths.get("./index"));
+        IndexWriterConfig config = new IndexWriterConfig(analyzer);
+        return new IndexWriter(directory, config);
+    }
+
+    private void writeEntriesToIndex(IndexWriter indexWriter) throws IOException {
+        WeblogEntry[] entries = webloggerFactory.getWeblogEntryManager().getRecentWeblogEntries(BATCH_SIZE);
+        for (WeblogEntry entry : entries) {
+            Document document = createDocument(entry);
+            indexWriter.addDocument(document);
+        }
+    }
+
+    private Document createDocument(WeblogEntry entry) {
+        Document document = new Document();
+        document.add(new StringField("id", String.valueOf(entry.getId()), Field.Store.YES));
+        document.add(new TextField("title", entry.getTitle(), Field.Store.YES));
+        document.add(new TextField("content", entry.getContent(), Field.Store.YES));
+        document.add(new StringField("permalink", entry.getPermalink(), Field.Store.YES));
+        document.add(new StringField("username", entry.getUsername(), Field.Store.YES));
+        document.add(new StringField("timezone", entry.getTimezone(), Field.Store.YES));
+        document.add(new StringField("locale", entry.getLocale(), Field.Store.YES));
+        document.add(new StringField("dateCreated", String.valueOf(new Date(entry.getDateCreated()).getTime()), Field.Store.YES));
+        return document;
     }
 }

@@ -1,47 +1,85 @@
-/*
- * Licensed to the Apache Software Foundation (ASF) under one or more
- *  contributor license agreements.  The ASF licenses this file to You
- * under the Apache License, Version 2.0 (the "License"); you may not
- * use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.  For additional information regarding
- * copyright in this work, please see the NOTICE file in the top level
- * directory of this distribution.
- */
 package org.apache.roller.weblogger.business.search.lucene;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
+import org.apache.lucene.analysis.standard.StandardAnalyzer;
+import org.apache.lucene.document.Document;
+import org.apache.lucene.index.DirectoryReader;
+import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.index.Term;
+import org.apache.lucene.queryparser.classic.ParseException;
+import org.apache.lucene.queryparser.classic.QueryParser;
+import org.apache.lucene.search.IndexSearcher;
+import org.apache.lucene.search.Query;
+import org.apache.lucene.search.ScoreDoc;
+import org.apache.lucene.search.TopDocs;
+import org.apache.lucene.search.TermQuery;
+import org.apache.lucene.store.Directory;
+import org.apache.lucene.store.FSDirectory;
+import org.apache.roller.weblogger.WebloggerException;
+import org.apache.roller.weblogger.business.Weblogger;
+import org.apache.roller.weblogger.business.WeblogEntryManager;
+import org.apache.roller.weblogger.pojos.WeblogEntry;
+import org.apache.roller.weblogger.pojos.Weblog;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-/**
- * @author aim4min
- */
-public abstract class ReadFromIndexOperation extends IndexOperation {
-    public ReadFromIndexOperation(LuceneIndexManager mgr) {
-        super(mgr);
-    }
-    
-    private static Log logger = LogFactory.getFactory().getInstance(
-            ReadFromIndexOperation.class);
-    
-    @Override
-    public final void run() {
-        try {
-            manager.getReadWriteLock().readLock().lock();
-            doRun();
+import java.io.IOException;
+import java.nio.file.Paths;
+import java.util.ArrayList;
+import java.util.List;
 
-        } catch (Exception e) {
-            logger.error("Error acquiring read lock on index", e);
-        } finally {
-            manager.getReadWriteLock().readLock().unlock();
+public class ReadFromIndexOperation {
+
+    private static final Logger LOG = LoggerFactory.getLogger(ReadFromIndexOperation.class);
+    private static final String INDEX_DIR = "lucene/index";
+    private static final String WEBLOG_ID_FIELD = "weblogId";
+    private static final String ENTRY_ID_FIELD = "entryId";
+
+    public List<WeblogEntry> readEntries(Weblog weblog) {
+        List<WeblogEntry> entries = new ArrayList<>();
+        try (Directory directory = FSDirectory.open(Paths.get(INDEX_DIR));
+             IndexReader indexReader = DirectoryReader.open(directory)) {
+
+            IndexSearcher indexSearcher = new IndexSearcher(indexReader);
+            QueryParser parser = new QueryParser(WEBLOG_ID_FIELD, new StandardAnalyzer());
+            Query query = parser.parse(String.valueOf(weblog.getId()));
+
+            TopDocs topDocs = indexSearcher.search(query, Integer.MAX_VALUE);
+            ScoreDoc[] scoreDocs = topDocs.scoreDocs;
+
+            for (ScoreDoc scoreDoc : scoreDocs) {
+                Document document = indexSearcher.doc(scoreDoc.doc);
+                WeblogEntry entry = Weblogger.getInstance().getWeblogEntryManager().getWeblogEntry(
+                        Long.parseLong(document.get(ENTRY_ID_FIELD)));
+                if (entry != null) {
+                    entries.add(entry);
+                }
+            }
+        } catch (IOException | ParseException e) {
+            LOG.error("Error reading from index", e);
+            throw new WebloggerException("Error reading from index", e);
         }
+        return entries;
     }
-    
+
+    public WeblogEntry readEntry(WeblogEntry entry) {
+        try (Directory directory = FSDirectory.open(Paths.get(INDEX_DIR));
+             IndexReader indexReader = DirectoryReader.open(directory)) {
+
+            IndexSearcher indexSearcher = new IndexSearcher(indexReader);
+            TermQuery query = new TermQuery(new Term(ENTRY_ID_FIELD, String.valueOf(entry.getId())));
+
+            TopDocs topDocs = indexSearcher.search(query, 1);
+            ScoreDoc[] scoreDocs = topDocs.scoreDocs;
+
+            if (scoreDocs.length > 0) {
+                Document document = indexSearcher.doc(scoreDocs[0].doc);
+                return Weblogger.getInstance().getWeblogEntryManager().getWeblogEntry(
+                        Long.parseLong(document.get(ENTRY_ID_FIELD)));
+            }
+        } catch (IOException e) {
+            LOG.error("Error reading from index", e);
+            throw new WebloggerException("Error reading from index", e);
+        }
+        return null;
+    }
 }
