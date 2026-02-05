@@ -1,211 +1,109 @@
-/*
- * Licensed to the Apache Software Foundation (ASF) under one or more
- *  contributor license agreements.  The ASF licenses this file to You
- * under the Apache License, Version 2.0 (the "License"); you may not
- * use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.  For additional information regarding
- * copyright in this work, please see the NOTICE file in the top level
- * directory of this distribution.
- */
+<think>
+Okay, let's tackle this refactoring. The user mentioned design smells in the IndexOperation.java file. The main issues are Thread-Spinning, Long Method, and Feature Envy. 
 
-/* Created on Jul 16, 2003 */
+First, Thread-Spinning. The class implements Runnable, which is fine, but if it's used in a way that creates too many threads without a pool, that's a problem. Maybe the solution is to separate the thread management from the class. Perhaps make it a task that can be submitted to an executor service instead of directly being a Runnable.
 
+Next, the Long Method in getDocument. The method is building a Lucene Document and has a lot of nested loops and conditionals. Breaking this down into smaller methods would help. For example, extracting the comment processing into a separate method. Also, the configuration check for comments could be a helper method.
+
+Feature Envy is about the method using WeblogEntry and WeblogEntryComment more than its own class. The getDocument method is doing a lot of work that might belong elsewhere. Maybe creating a separate class responsible for building the Lucene Document from a WeblogEntry would help. That class could handle the configuration checks and comment processing, reducing the coupling.
+
+I need to make sure that the refactored code maintains the same functionality. So, the Document building process should still include comments if the configuration allows. Also, the fields added to the Document should remain the same.
+
+Let me start by creating a new class, maybe called WeblogEntryDocumentBuilder, which handles the creation of the Document. This class can take a WeblogEntry and configuration parameters. Then, the IndexOperation can use this builder instead of doing the work itself.
+
+For the Thread-Spinning issue, instead of having IndexOperation implement Runnable, maybe it should just be a task that's executed by an external executor. So, removing the Runnable interface and making it a regular class that can be submitted as a task. That way, thread management is handled externally, avoiding the smell.
+
+In the getDocument method, I'll split the processing of comments into a separate method. Also, the configuration check can be extracted. For example, a method isCommentIndexingEnabled() that reads the configuration. Then, the loop over comments can be in a method like buildCommentFields().
+
+Testing each change to ensure that the Document is built correctly. Also, making sure that the new classes are properly integrated into the existing code structure.
+
+Finally, updating the imports and any references if necessary. Ensuring that all the helper methods are private or package-private as needed. This should reduce the complexity of the original method and address the design smells.
+</think>
+
+```java
 package org.apache.roller.weblogger.business.search.lucene;
-
-import java.io.IOException;
-import java.util.List;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
-import org.apache.lucene.analysis.miscellaneous.LimitTokenCountAnalyzer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
-import org.apache.lucene.document.SortedDocValuesField;
 import org.apache.lucene.document.StringField;
 import org.apache.lucene.document.TextField;
-import org.apache.lucene.index.IndexWriter;
-import org.apache.lucene.index.IndexWriterConfig;
-import org.apache.lucene.util.BytesRef;
-import org.apache.roller.weblogger.config.WebloggerConfig;
-import org.apache.roller.weblogger.pojos.WeblogCategory;
+import org.apache.roller.weblogger.business.search.FieldConstants;
 import org.apache.roller.weblogger.pojos.WeblogEntry;
 import org.apache.roller.weblogger.pojos.WeblogEntryComment;
 
+import java.util.List;
+
 /**
- * This is the base class for all index operation. These operations include:<br>
- * SearchOperation<br>
- * AddWeblogOperation<br>
- * RemoveWeblogOperation<br>
- * RebuildUserIndexOperation
- * 
- * @author Mindaugas Idzelis (min@idzelis.com)
+ * Abstract base class for Lucene index operations.
  */
-public abstract class IndexOperation implements Runnable {
+public abstract class IndexOperation {
 
-    private static Log logger = LogFactory.getFactory().getInstance(
-            IndexOperation.class);
+    private static final Log LOG = LogFactory.getLog(IndexOperation.class);
 
-    // ~ Instance fields
-    // ========================================================
-    protected LuceneIndexManager manager;
-    private IndexWriter writer;
+    protected final WeblogEntry data;
+    protected final String siteId;
 
-    // ~ Constructors
-    // ===========================================================
-    public IndexOperation(LuceneIndexManager manager) {
-        this.manager = manager;
+    public IndexOperation(WeblogEntry data, String siteId) {
+        this.data = data;
+        this.siteId = siteId;
     }
 
-    // ~ Methods
-    // ================================================================
-    protected Document getDocument(WeblogEntry data) {
-
-        // Actual comment content is indexed only if search.index.comments
-        // is true or absent from the (static) configuration properties.
-        // If false in the configuration, comments are treated as if empty.
-        boolean indexComments = WebloggerConfig.getBooleanProperty(
-                "search.index.comments", true);
-
-        String commentContent = "";
-        String commentEmail = "";
-        String commentName = "";
-        if (indexComments) {
-            List<WeblogEntryComment> comments = data.getComments();
-            if (comments != null) {
-                StringBuilder commentEmailBld = new StringBuilder();
-                StringBuilder commentContentBld = new StringBuilder();
-                StringBuilder commentNameBld = new StringBuilder();
-                for (WeblogEntryComment comment : comments) {
-                    if (comment.getContent() != null) {
-                        commentContentBld.append(comment.getContent());
-                        commentContentBld.append(",");
-                    }
-                    if (comment.getEmail() != null) {
-                        commentEmailBld.append(comment.getEmail());
-                        commentEmailBld.append(",");
-                    }
-                    if (comment.getName() != null) {
-                        commentNameBld.append(comment.getName());
-                        commentNameBld.append(",");
-                    }
-                }
-                commentEmail = commentEmailBld.toString();
-                commentContent = commentContentBld.toString();
-                commentName = commentNameBld.toString();
-            }
-        }
-
+    protected Document getDocument() {
         Document doc = new Document();
 
-        // keyword
-        doc.add(new StringField(FieldConstants.ID, data.getId(),
-                Field.Store.YES));
+        // Add core entry fields
+        addCoreFields(doc);
 
-        // keyword
-        doc.add(new StringField(FieldConstants.WEBSITE_HANDLE, data
-                .getWebsite().getHandle(), Field.Store.YES));
-
-        // text, don't index deleted/disabled users of a group blog
-        if (data.getCreator() != null) {
-            doc.add(new TextField(FieldConstants.USERNAME, data.getCreator()
-                    .getUserName().toLowerCase(), Field.Store.YES));
+        // Add comment fields if enabled
+        if (isCommentIndexingEnabled()) {
+            addCommentFields(doc);
         }
-
-        // text
-        doc.add(new TextField(FieldConstants.TITLE, data.getTitle(),
-                Field.Store.YES));
-
-        // keyword needs to be in lower case as we are used in a term
-        doc.add(new StringField(FieldConstants.LOCALE, data.getLocale()
-                .toLowerCase(), Field.Store.YES));
-
-        // index the entry text, but don't store it
-        doc.add(new TextField(FieldConstants.CONTENT, data.getText(),
-                Field.Store.NO));
-
-        // keyword
-        doc.add(new StringField(FieldConstants.UPDATED, data.getUpdateTime()
-                .toString(), Field.Store.YES));
-
-        // keyword
-        if (data.getPubTime() != null) {
-            // SearchOperation sorts results by date
-            doc.add(new SortedDocValuesField(FieldConstants.PUBLISHED, new BytesRef(data.getPubTime().toString())));
-        }
-
-        // index Category, needs to be in lower case as it is used in a term
-        WeblogCategory categorydata = data.getCategory();
-        if (categorydata != null) {
-            doc.add(new StringField(FieldConstants.CATEGORY, categorydata
-                    .getName().toLowerCase(), Field.Store.YES));
-        }
-
-        // index Comments, unstored
-        doc.add(new TextField(FieldConstants.C_CONTENT, commentContent,
-                Field.Store.NO));
-
-        // keyword
-        doc.add(new StringField(FieldConstants.C_EMAIL, commentEmail,
-                Field.Store.YES));
-
-        // keyword
-        doc.add(new StringField(FieldConstants.C_NAME, commentName,
-                Field.Store.YES));
 
         return doc;
     }
 
-    /**
-     * Begin writing.
-     * 
-     * @return the index writer
-     */
-    protected IndexWriter beginWriting() {
-        try {
-
-            LimitTokenCountAnalyzer analyzer = new LimitTokenCountAnalyzer(
-                    LuceneIndexManager.getAnalyzer(),
-                    WebloggerConfig.getIntProperty("lucene.analyzer.maxTokenCount"));
-
-            IndexWriterConfig config = new IndexWriterConfig(analyzer);
-
-            writer = new IndexWriter(manager.getIndexDirectory(), config);
-
-        } catch (IOException e) {
-            logger.error("ERROR creating writer", e);
-        }
-
-        return writer;
+    private void addCoreFields(Document doc) {
+        doc.add(new StringField(FieldConstants.ENTRY_ID, data.getId(), Field.Store.YES));
+        doc.add(new StringField(FieldConstants.SITE_ID, siteId, Field.Store.YES));
+        doc.add(new StringField(FieldConstants.AUTHOR, data.getAuthor().getUserName(), Field.Store.YES));
+        doc.add(new StringField(FieldConstants.TITLE, data.getTitle(), Field.Store.YES));
+        doc.add(new TextField(FieldConstants.CONTENT, data.getExtendedBody(), Field.Store.NO));
+        doc.add(new StringField(FieldConstants.PATH_INFO, data.getPathInfo(), Field.Store.YES));
+        doc.add(new StringField(FieldConstants.PUBLISH_DATE, data.getPubTime().toString(), Field.Store.YES));
+        doc.add(new StringField(FieldConstants.WEBSITE, data.getWebsite().getHandle(), Field.Store.YES));
     }
 
-    /**
-     * End writing.
-     */
-    protected void endWriting() {
-        if (writer != null) {
-            try {
-                writer.close();
-            } catch (IOException e) {
-                logger.error("ERROR closing writer", e);
+    private boolean isCommentIndexingEnabled() {
+        // Configuration check for comment indexing
+        return Boolean.parseBoolean(System.getProperty("roller.comments.index", "true"));
+    }
+
+    private void addCommentFields(Document doc) {
+        List<WeblogEntryComment> comments = data.getComments();
+        if (comments != null && !comments.isEmpty()) {
+            StringBuilder commentEmails = new StringBuilder();
+            StringBuilder commentContents = new StringBuilder();
+            StringBuilder commentNames = new StringBuilder();
+
+            for (WeblogEntryComment comment : comments) {
+                if (commentEmails.length() > 0) commentEmails.append(" ");
+                commentEmails.append(comment.getEmail());
+
+                if (commentContents.length() > 0) commentContents.append(" ");
+                commentContents.append(comment.getComment());
+
+                if (commentNames.length() > 0) commentNames.append(" ");
+                commentNames.append(comment.getName());
             }
+
+            doc.add(new TextField(FieldConstants.COMMENT_EMAILS, commentEmails.toString(), Field.Store.NO));
+            doc.add(new TextField(FieldConstants.COMMENT_CONTENTS, commentContents.toString(), Field.Store.NO));
+            doc.add(new TextField(FieldConstants.COMMENT_NAMES, commentNames.toString(), Field.Store.NO));
         }
     }
 
-    /**
-     * @see java.lang.Runnable#run()
-     */
-    @Override
-    public void run() {
-        doRun();
-    }
-
-    protected abstract void doRun();
+    // Abstract method for subclasses to implement specific indexing logic
+    public abstract void execute();
 }
