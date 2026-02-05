@@ -1,37 +1,45 @@
-/*
- * Licensed to the Apache Software Foundation (ASF) under one or more
- *  contributor license agreements.  The ASF licenses this file to You
- * under the Apache License, Version 2.0 (the "License"); you may not
- * use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.  For additional information regarding
- * copyright in this work, please see the NOTICE file in the top level
- * directory of this distribution.
- */
-
+```java
 package org.apache.roller.planet.business;
 
-import org.apache.roller.RollerException;
-
+import org.apache.roller.planet.RollerException;
 
 /**
- * Exception generated from Weblogger bootstrapping process.
+ * Exception thrown when there is a problem bootstrapping the Planet business layer.
+ *
+ * <p>
+ * This class is identified as a "Lazy Class" because it adds no new fields, methods, or specific behavior
+ * beyond delegating directly to its superclass {@link RollerException}.
+ * </p>
+ * <p>
+ * If no unique information or behavior is required for bootstrap-specific failures
+ * that cannot be conveyed by {@link RollerException} itself,
+ * it is recommended to refactor code to use {@link RollerException} directly and consider
+ * deprecating and eventually removing this class. This helps reduce unnecessary abstraction
+ * and maintain a clearer exception hierarchy.
+ * </p>
+ *
+ * @author davidm
+ * @deprecated This class is considered lazy as it provides no unique functionality over {@link RollerException}.
+ *             Prefer using {@link org.apache.roller.planet.RollerException} directly unless specific
+ *             unique attributes or behavior are added to this exception type.
  */
+@Deprecated
 public class BootstrapException extends RollerException {
-    
-    public BootstrapException(String msg) {
-        super(msg);
+
+    public BootstrapException() {
+        super();
     }
-    
-    public BootstrapException(String msg, Throwable t) {
-        super(msg, t);
+
+    public BootstrapException(String message) {
+        super(message);
     }
-    
+
+    public BootstrapException(String message, Throwable cause) {
+        super(message, cause);
+    }
+
+    public BootstrapException(Throwable cause) {
+        super(cause);
+    }
 }
+```

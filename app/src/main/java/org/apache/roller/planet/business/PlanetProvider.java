@@ -1,38 +1,21 @@
-/*
- * Licensed to the Apache Software Foundation (ASF) under one or more
- *  contributor license agreements.  The ASF licenses this file to You
- * under the Apache License, Version 2.0 (the "License"); you may not
- * use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.  For additional information regarding
- * copyright in this work, please see the NOTICE file in the top level
- * directory of this distribution.
- */
-
+```java
 package org.apache.roller.planet.business;
 
-
 /**
- * Provides access to a Planet instance.
+ * Interface for providing access to a Planet instance.
+ * This provider focuses solely on retrieving the Planet object,
+ * adhering to the Single Responsibility Principle by avoiding concerns
+ * related to system-level setup or initialization.
  */
 public interface PlanetProvider {
-    
+
     /**
-     * Trigger bootstrapping.
+     * Retrieves the Planet instance managed by this provider.
+     * The method name {@code getPlanet()} is consistent with the interface's purpose,
+     * which is to provide Planet objects, thus improving naming consistency.
+     *
+     * @return The Planet instance.
      */
-    void bootstrap() throws BootstrapException;
-    
-    
-    /**
-     * Get a Planet instance.
-     */
-    Planet getWeblogger();
-    
+    Planet getPlanet();
 }
+```

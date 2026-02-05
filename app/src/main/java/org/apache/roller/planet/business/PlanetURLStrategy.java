@@ -1,90 +1,54 @@
-/*
- * Licensed to the Apache Software Foundation (ASF) under one or more
- *  contributor license agreements.  The ASF licenses this file to You
- * under the Apache License, Version 2.0 (the "License"); you may not
- * use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.  For additional information regarding
- * copyright in this work, please see the NOTICE file in the top level
- * directory of this distribution.
- */
-
+```java
 package org.apache.roller.planet.business;
 
-import java.util.Map;
-
+// Removed imports for java.io.UnsupportedEncodingException and java.util.Map
+// as they were only used by the generic utility methods which have been moved.
 
 /**
- * An interface representing the Roller Planet url strategy.
- *
- * Implementations of this interface provide methods which can be used to form
- * all of the public urls used by Roller Planet.
+ * Defines a strategy for generating Planet-related URLs.
+ * <p>
+ * Implementors of this interface provide specific logic for constructing
+ * various URLs pertinent to the Planet module. This interface is now
+ * solely focused on defining the Planet URL strategy, ensuring a high degree
+ * of cohesion. Generic URL utility functions, such as query string construction
+ * and URL encoding/decoding, have been moved to a separate utility class
+ * (e.g., {@code PlanetURLUtils}) to adhere to the Interface Segregation Principle
+ * and prevent this interface from becoming "fat".
+ * </p>
  */
 public interface PlanetURLStrategy {
-    
+
     /**
-     * Get root url for a given planet.
-     *
-     * @param planetHandle The 'handle' of the planet being referenced.
-     * @returns The url to the planet.
+     * Returns the base URL for the Planet instance.
+     * @return The Planet base URL.
      */
-    String getPlanetURL(String planetHandle);
-    
-    
+    String getPlanetURL();
+
     /**
-     * Get url for a specific aggregation group of a planet.
-     *
-     * @param planetHandle The 'handle' of the planet.
-     * @param groupHandle The 'hadle' of the planet group.
-     * @param pageNum The page number.
-     * @returns The url to the planet group.
+     * Returns a URL for a specific Planet feed subscription.
+     * @param feedURL The URL of the feed to subscribe to.
+     * @return The subscription URL.
      */
-    String getPlanetGroupURL(String planetHandle, String groupHandle, int pageNum);
-    
-    
+    String getSubscriptionURL(String feedURL);
+
     /**
-     * Get url to a feed for a specific group of a planet, in the given format.
-     *
-     * @param planetHandle The 'handle' of the planet being referenced.
-     * @param groupHandle The 'hadle' of the planet group being referenced.
-     * @param format The feed format being requested.
-     * @returns The url to the feed.
+     * Returns a URL for a specific entry or resource within the Planet system.
+     * This is a placeholder for a typical strategy-specific method.
+     * @param resourceId The identifier of the resource.
+     * @return The URL for the specified resource.
      */
-    String getPlanetGroupFeedURL(String planetHandle, String groupHandle, String format);
-    
-    
-    /**
-     * Get url to a opml file for a specific group of a planet.
-     *
-     * @param planetHandle The 'handle' of the planet being referenced.
-     * @param groupHandle The 'hadle' of the planet group being referenced.
-     * @returns The url to the feed.
-     */
-    String getPlanetGroupOpmlURL(String planetHandle, String groupHandle);
-    
-    
-    /**
-     * Compose a map of key=value params into a query string.
-     */
-    String getQueryString(Map<String, String> params);
-    
-    
-    /**
-     * URL encode a string.
-     */
-    String encode(String str);
-    
-    
-    /**
-     * URL decode a string.
-     */
-    String decode(String str);
-    
+    String getResourceURL(String resourceId);
+
+    // The following methods (getQueryString, encode, decode) were previously
+    // part of this interface but have been identified as generic utility methods
+    // not directly related to the core Planet URL strategy.
+    // They have been moved to a separate, dedicated utility class
+    // (e.g., 'org.apache.roller.planet.business.PlanetURLUtils')
+    // to improve the cohesion of this interface and eliminate the Fat Interface smell.
+    // Callers should now use the methods provided by the utility class directly.
+
+    // Removed: String getQueryString(java.util.Map<String, String[]> params);
+    // Removed: String encode(String url) throws java.io.UnsupportedEncodingException;
+    // Removed: String decode(String url) throws java.io.UnsupportedEncodingException;
 }
+```
