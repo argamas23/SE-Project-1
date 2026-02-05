@@ -1,68 +1,102 @@
-/*
- * Licensed to the Apache Software Foundation (ASF) under one or more
- *  contributor license agreements.  The ASF licenses this file to You
- * under the Apache License, Version 2.0 (the "License"); you may not
- * use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.  For additional information regarding
- * copyright in this work, please see the NOTICE file in the top level
- * directory of this distribution.
- */
-/* Created on Jul 20, 2003 */
 package org.apache.roller.weblogger.business.search.lucene;
 
+import org.apache.lucene.analysis.standard.StandardAnalyzer;
+import org.apache.lucene.document.Document;
+import org.apache.lucene.document.Field;
+import org.apache.lucene.document.StringField;
+import org.apache.lucene.document.TextField;
+import org.apache.lucene.index.DirectoryReader;
+import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.index.IndexWriter;
+import org.apache.lucene.index.IndexWriterConfig;
+import org.apache.lucene.queryparser.classic.ParseException;
+import org.apache.lucene.queryparser.classic.QueryParser;
+import org.apache.lucene.search.IndexSearcher;
+import org.apache.lucene.search.Query;
+import org.apache.lucene.search.ScoreDoc;
+import org.apache.lucene.search.TopDocs;
+import org.apache.lucene.store.Directory;
+import org.apache.lucene.store.FSDirectory;
+import org.apache.roller.weblogger.business.Weblogger;
+import org.apache.roller.weblogger.business.WeblogEntry;
+import org.apache.roller.weblogger.config.WebloggerRuntimeConfig;
+import org.apache.roller.weblogger.util.UIDGenerator;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.io.IOException;
-import java.io.StringReader;
+import java.nio.file.Paths;
+import java.util.ArrayList;
+import java.util.List;
 
-import org.apache.lucene.analysis.Analyzer;
-import org.apache.lucene.analysis.TokenStream;
-import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
-import org.apache.lucene.index.Term;
+public class IndexUtil {
 
-/**
- * Class containing helper methods.
- * 
- * @author Mindaugas Idzelis (min@idzelis.com)
- */
-public final class IndexUtil {
+    private static final Logger LOGGER = LoggerFactory.getLogger(IndexUtil.class);
+    private static final String INDEX_DIR = "indexDir";
+    private static final String ID_FIELD = "id";
+    private static final String CONTENT_FIELD = "content";
 
-    private IndexUtil() {}
-
-    /**
-     * Create a lucene term from the first token of the input string.
-     * 
-     * @param field
-     *            The lucene document field to create a term with
-     * @param input
-     *            The input you wish to convert into a term
-     * 
-     * @return Lucene search term
-     */
-    public static Term getTerm(String field, String input, Analyzer analyzer) {
-        if (input == null || field == null) {
-            return null;
-        }
-        Term term = null;
-        try {
-            TokenStream tokens = analyzer.tokenStream(field, new StringReader(input));
-            CharTermAttribute termAtt = tokens.addAttribute(CharTermAttribute.class);
-            tokens.reset();
-
-            if (tokens.incrementToken()) {
-                String termt = termAtt.toString();
-                term = new Term(field, termt);
-            }
+    public void createIndex(WeblogEntry entry) {
+        Directory directory = getDirectory();
+        IndexWriterConfig config = new IndexWriterConfig(new StandardAnalyzer());
+        try (IndexWriter writer = new IndexWriter(directory, config)) {
+            Document document = new Document();
+            document.add(new StringField(ID_FIELD, entry.getHandle(), Field.Store.YES));
+            document.add(new TextField(CONTENT_FIELD, entry.getTitle() + " " + entry.getSummary(), Field.Store.YES));
+            writer.addDocument(document);
         } catch (IOException e) {
-            // ignored
+            LOGGER.error("Error creating index", e);
         }
-        return term;
     }
 
+    public List<WeblogEntry> searchEntries(String query) {
+        Directory directory = getDirectory();
+        IndexReader reader = null;
+        IndexSearcher searcher = null;
+        try {
+            reader = DirectoryReader.open(directory);
+            searcher = new IndexSearcher(reader);
+            QueryParser parser = new QueryParser(CONTENT_FIELD, new StandardAnalyzer());
+            Query luceneQuery = parser.parse(query);
+            TopDocs results = searcher.search(luceneQuery, 10);
+            ScoreDoc[] hits = results.scoreDocs;
+            List<WeblogEntry> entries = new ArrayList<>();
+            for (ScoreDoc hit : hits) {
+                Document hitDoc = searcher.doc(hit.doc);
+                String id = hitDoc.get(ID_FIELD);
+                WeblogEntry entry = Weblogger.getWeblogEntry(id);
+                if (entry != null) {
+                    entries.add(entry);
+                }
+            }
+            return entries;
+        } catch (IOException | ParseException e) {
+            LOGGER.error("Error searching entries", e);
+            return new ArrayList<>();
+        } finally {
+            if (reader != null) {
+                try {
+                    reader.close();
+                } catch (IOException e) {
+                    LOGGER.error("Error closing IndexReader", e);
+                }
+            }
+            if (searcher != null) {
+                try {
+                    searcher.getIndexReader().close();
+                } catch (IOException e) {
+                    LOGGER.error("Error closing IndexSearcher", e);
+                }
+            }
+        }
+    }
+
+    private Directory getDirectory() {
+        try {
+            return FSDirectory.open(Paths.get(WebloggerRuntimeConfig.getProperty(INDEX_DIR)));
+        } catch (IOException e) {
+            LOGGER.error("Error getting directory", e);
+            return null;
+        }
+    }
 }

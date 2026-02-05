@@ -1,88 +1,87 @@
-/*
- * Licensed to the Apache Software Foundation (ASF) under one or more
- *  contributor license agreements.  The ASF licenses this file to You
- * under the Apache License, Version 2.0 (the "License"); you may not
- * use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.  For additional information regarding
- * copyright in this work, please see the NOTICE file in the top level
- * directory of this distribution.
- */
-/* Created on Jul 16, 2003 */
 package org.apache.roller.weblogger.business.search.lucene;
 
-import java.io.IOException;
-
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
-import org.apache.lucene.index.IndexWriter;
+import org.apache.lucene.index.Term;
+import org.apache.lucene.search.TermQuery;
 import org.apache.roller.weblogger.WebloggerException;
 import org.apache.roller.weblogger.business.Weblogger;
-import org.apache.roller.weblogger.business.WeblogEntryManager;
+import org.apache.roller.weblogger.business.WebloggerFactory;
+import org.apache.roller.weblogger.business.search.SearchConstants;
 import org.apache.roller.weblogger.pojos.WeblogEntry;
+import org.apache.roller.weblogger.pojos.WeblogEntryComment;
+import org.apache.roller.weblogger.pojos.WeblogEntrySearchResult;
+import org.apache.roller.weblogger.config.WebloggerRuntimeConfig;
+import org.apache.roller.weblogger.util.Util;
 
-/**
- * An operation that adds a new log entry into the index.
- * @author Mindaugas Idzelis  (min@idzelis.com)
- */
-public class AddEntryOperation extends WriteToIndexOperation {
-    
-    //~ Static fields/initializers =============================================
-    
-    private static Log logger =
-            LogFactory.getFactory().getInstance(AddEntryOperation.class);
-    
-    //~ Instance fields ========================================================
-    
-    private WeblogEntry data;
-    private Weblogger roller;
-    
-    //~ Constructors ===========================================================
-    
-    /**
-     * Adds a web log entry into the index.
-     */
-    public AddEntryOperation(Weblogger roller, LuceneIndexManager mgr, WeblogEntry data) {
-        super(mgr);
-        this.roller = roller;
-        this.data = data;
+import java.util.ArrayList;
+import java.util.List;
+
+public class AddEntryOperation {
+
+    private static final String ENTRY_TITLE_FIELD = "entryTitle";
+    private static final String ENTRY_CONTENT_FIELD = "entryContent";
+    private static final String ENTRY_AUTHOR_FIELD = "entryAuthor";
+    private static final String ENTRY_PUBLISH_DATE_FIELD = "entryPublishDate";
+    private static final String ENTRY_WEBLOG_FIELD = "entryWeblog";
+
+    private WeblogEntry entry;
+    private Weblogger weblogger;
+    private WebloggerFactory webloggerFactory;
+
+    public AddEntryOperation(WeblogEntry entry) {
+        this.entry = entry;
+        this.weblogger = WebloggerFactory.getWeblogger();
+        this.webloggerFactory = WebloggerFactory.getFactory();
     }
-    
-    //~ Methods ================================================================
-    
-    @Override
-    public void doRun() {
-        IndexWriter writer = beginWriting();
-        
-        // since this operation can be run on a separate thread we must treat
-        // the weblog object passed in as a detached object which is proned to
-        // lazy initialization problems, so requery for the object now
-        try {
-            WeblogEntryManager wMgr = roller.getWeblogEntryManager();
-            this.data = wMgr.getWeblogEntry(this.data.getId());
-        } catch (WebloggerException ex) {
-            logger.error("Error getting weblogentry object", ex);
-            return;
+
+    public void execute() throws WebloggerException {
+        addEntryToIndex();
+    }
+
+    private void addEntryToIndex() throws WebloggerException {
+        addEntryDetailsToIndex();
+        addEntryCommentsToIndex();
+    }
+
+    private void addEntryDetailsToIndex() throws WebloggerException {
+        weblogger.getIndexManager().addDocument(createEntryDocument());
+    }
+
+    private void addEntryCommentsToIndex() throws WebloggerException {
+        List<WeblogEntryComment> comments = weblogger.getWeblogEntryManager().getCommentsByEntry(entry);
+        for (WeblogEntryComment comment : comments) {
+            weblogger.getIndexManager().addDocument(createCommentDocument(comment));
         }
-        
-        try {
-            if (writer != null) {
-                writer.addDocument(getDocument(data));
-            }
-        } catch (IOException e) {
-            logger.error("Problems adding doc to index", e);
-        } finally {
-            if (roller != null) {
-                roller.release();
-            }
-            endWriting();
-        }
-    }   
+    }
+
+    private org.apache.lucene.document.Document createEntryDocument() {
+        org.apache.lucene.document.Document doc = new org.apache.lucene.document.Document();
+
+        doc.add(new org.apache.lucene.index.Term(ENTRY_TITLE_FIELD, entry.getTitle()));
+        doc.add(new org.apache.lucene.index.Term(ENTRY_CONTENT_FIELD, entry.getText()));
+        doc.add(new org.apache.lucene.index.Term(ENTRY_AUTHOR_FIELD, entry.getCreator().getUserName()));
+        doc.add(new org.apache.lucene.index.Term(ENTRY_PUBLISH_DATE_FIELD, Util.dateToString(entry.getPubTime(), Util.LUCENE_DATE_FORMAT)));
+        doc.add(new org.apache.lucene.index.Term(ENTRY_WEBLOG_FIELD, entry.getWeblog().getHandle()));
+
+        return doc;
+    }
+
+    private org.apache.lucene.document.Document createCommentDocument(WeblogEntryComment comment) {
+        org.apache.lucene.document.Document doc = new org.apache.lucene.document.Document();
+
+        doc.add(new org.apache.lucene.index.Term(ENTRY_TITLE_FIELD, comment.getContent()));
+        doc.add(new org.apache.lucene.index.Term(ENTRY_CONTENT_FIELD, comment.getContent()));
+        doc.add(new org.apache.lucene.index.Term(ENTRY_AUTHOR_FIELD, comment.getCreator().getUserName()));
+        doc.add(new org.apache.lucene.index.Term(ENTRY_PUBLISH_DATE_FIELD, Util.dateToString(comment.getPubTime(), Util.LUCENE_DATE_FORMAT)));
+        doc.add(new org.apache.lucene.index.Term(ENTRY_WEBLOG_FIELD, comment.getWeblogEntry().getWeblog().getHandle()));
+
+        return doc;
+    }
+
+    private boolean isValidEntry(WeblogEntry entry) {
+        return entry != null && entry.getWeblog() != null && entry.getCreator() != null;
+    }
+
+    private boolean isValidComment(WeblogEntryComment comment) {
+        return comment != null && comment.getWeblogEntry() != null && comment.getCreator() != null;
+    }
 }

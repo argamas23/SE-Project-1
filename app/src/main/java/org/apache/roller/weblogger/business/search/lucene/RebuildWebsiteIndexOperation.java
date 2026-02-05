@@ -1,156 +1,111 @@
-/*
- * Licensed to the Apache Software Foundation (ASF) under one or more
- *  contributor license agreements.  The ASF licenses this file to You
- * under the Apache License, Version 2.0 (the "License"); you may not
- * use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.  For additional information regarding
- * copyright in this work, please see the NOTICE file in the top level
- * directory of this distribution.
- */
-/* Created on Jul 16, 2003 */
 package org.apache.roller.weblogger.business.search.lucene;
 
-import java.text.MessageFormat;
-import java.util.Date;
-import java.util.List;
-
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
 import org.apache.lucene.index.IndexWriter;
-import org.apache.lucene.index.Term;
-import org.apache.roller.util.RollerConstants;
-import org.apache.roller.weblogger.WebloggerException;
+import org.apache.lucene.index.IndexWriterConfig;
+import org.apache.roller.weblogger.business.WebloggerFactory;
 import org.apache.roller.weblogger.business.WeblogEntryManager;
-import org.apache.roller.weblogger.business.Weblogger;
+import org.apache.roller.weblogger.business.WeblogManager;
+import org.apache.roller.weblogger.config.WebloggerRuntimeConfig;
 import org.apache.roller.weblogger.pojos.Weblog;
 import org.apache.roller.weblogger.pojos.WeblogEntry;
-import org.apache.roller.weblogger.pojos.WeblogEntry.PubStatus;
-import org.apache.roller.weblogger.pojos.WeblogEntrySearchCriteria;
+import org.apache.roller.weblogger.pojos.WeblogEntryComment;
+import org.apache.lucene.analysis.standard.StandardAnalyzer;
+import org.apache.lucene.document.Document;
+import org.apache.lucene.document.Field;
+import org.apache.lucene.document.StringField;
+import org.apache.lucene.document.TextField;
+import org.apache.lucene.index.DirectoryReader;
+import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.queryparser.classic.QueryParser;
+import org.apache.lucene.search.IndexSearcher;
+import org.apache.lucene.search.Query;
+import org.apache.lucene.search.ScoreDoc;
+import org.apache.lucene.search.TopDocs;
+import org.apache.lucene.store.FSDirectory;
+import org.apache.lucene.store.Directory;
+import org.apache.roller.weblogger.util.RollerContext;
+import org.apache.roller.weblogger.util.StringUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-/**
- * An index operation that rebuilds a given users index (or all indexes).
- * 
- * @author Mindaugas Idzelis (min@idzelis.com)
- */
-public class RebuildWebsiteIndexOperation extends WriteToIndexOperation {
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
 
-    // ~ Static fields/initializers
-    // =============================================
+public class RebuildWebsiteIndexOperation {
 
-    private static Log logger = LogFactory.getFactory().getInstance(
-            RebuildWebsiteIndexOperation.class);
+    private static final Logger logger = LoggerFactory.getLogger(RebuildWebsiteIndexOperation.class);
 
-    // ~ Instance fields
-    // ========================================================
+    private static final String INDEX_DIR = "index";
+    private static final String FIELD_WEBLOG_HANDLE = "weblogHandle";
+    private static final String FIELD.Weblog_NAME = "weblogName";
+    private static final String FIELD_ENTRY_ID = "entryId";
+    private static final String FIELD_ENTRY_TITLE = "entryTitle";
+    private static final String FIELD_ENTRY_CONTENT = "entryContent";
+    private static final String FIELD_ENTRY_COMMENT = "entryComment";
+    private static final int MAX_RESULTS = 1000;
 
-    private Weblog website;
-    private Weblogger roller;
+    private WeblogManager weblogManager;
+    private WeblogEntryManager weblogEntryManager;
+    private IndexWriterConfig indexWriterConfig;
+    private Directory directory;
 
-    // ~ Constructors
-    // ===========================================================
-
-    /**
-     * Create a new operation that will recreate an index.
-     * 
-     * @param website
-     *            The website to rebuild the index for, or null for all users.
-     */
-    public RebuildWebsiteIndexOperation(Weblogger roller, LuceneIndexManager mgr,
-            Weblog website) {
-        super(mgr);
-        this.roller = roller;
-        this.website = website;
+    public RebuildWebsiteIndexOperation() {
+        this.weblogManager = WebloggerFactory.getWeblogger().getWeblogManager();
+        this.weblogEntryManager = WebloggerFactory.getWeblogger().getWeblogEntryManager();
+        this.indexWriterConfig = new IndexWriterConfig(new StandardAnalyzer());
+        this.directory = FSDirectory.open(WebloggerRuntimeConfig.getLuceneIndexDir());
     }
 
-    // ~ Methods
-    // ================================================================
-
-    @Override
-    public void doRun() {
-
-        Date start = new Date();
-
-        // since this operation can be run on a separate thread we must treat
-        // the weblog object passed in as a detached object which is proned to
-        // lazy initialization problems, so requery for the object now
-        if (this.website != null) {
-            logger.debug("Reindexining weblog " + website.getHandle());
-            try {
-                this.website = roller.getWeblogManager().getWeblog(
-                        this.website.getId());
-            } catch (WebloggerException ex) {
-                logger.error("Error getting website object", ex);
-                return;
-            }
-        } else {
-            logger.debug("Reindexining entire site");
-        }
-
-        IndexWriter writer = beginWriting();
-
+    public void execute() {
         try {
-            if (writer != null) {
+            rebuildIndex();
+        } catch (IOException e) {
+            logger.error("Error rebuilding index", e);
+        }
+    }
 
-                // Delete Doc
-                Term tWebsite = null;
-                if (website != null) {
-                    tWebsite = IndexUtil.getTerm(FieldConstants.WEBSITE_HANDLE,
-                            website.getHandle(), LuceneIndexManager.getAnalyzer());
-                }
-                if (tWebsite != null) {
-                    writer.deleteDocuments(tWebsite);
-                } else {
-                    Term all = IndexUtil.getTerm(FieldConstants.CONSTANT,
-                            FieldConstants.CONSTANT_V, LuceneIndexManager.getAnalyzer());
-                    writer.deleteDocuments(all);
-                }
+    private void rebuildIndex() throws IOException {
+        IndexWriter writer = new IndexWriter(directory, indexWriterConfig);
+        writer.deleteAllDocuments();
+        writer.commit();
+        writer.close();
 
-                // Add Doc
-                WeblogEntryManager weblogManager = roller
-                        .getWeblogEntryManager();
-                WeblogEntrySearchCriteria wesc = new WeblogEntrySearchCriteria();
-                wesc.setWeblog(website);
-                wesc.setStatus(PubStatus.PUBLISHED);
-                List<WeblogEntry> entries = weblogManager.getWeblogEntries(wesc);
-
-                logger.debug("Entries to index: " + entries.size());
-
-                for (WeblogEntry entry : entries) {
-                    writer.addDocument(getDocument(entry));
-                    logger.debug(MessageFormat.format(
-                            "Indexed entry {0}: {1}",
-                            entry.getPubTime(), entry.getAnchor()));
-                }
-
-                // release the database connection
-                roller.release();
-            }
-        } catch (Exception e) {
-            logger.error("ERROR adding/deleting doc to index", e);
-        } finally {
-            endWriting();
-            if (roller != null) {
-                roller.release();
+        List<Weblog> weblogs = getWeblogs();
+        for (Weblog weblog : weblogs) {
+            List<WeblogEntry> entries = getWeblogEntries(weblog);
+            for (WeblogEntry entry : entries) {
+                Document document = createDocument(entry);
+                writer.addDocument(document);
             }
         }
+        writer.close();
+    }
 
-        Date end = new Date();
-        double length = (end.getTime() - start.getTime()) / (double) RollerConstants.SEC_IN_MS;
+    private List<Weblog> getWeblogs() {
+        return weblogManager.getWeblogs();
+    }
 
-        if (website == null) {
-            logger.info("Completed rebuilding index for all users in '"
-                    + length + "' secs");
-        } else {
-            logger.info("Completed rebuilding index for website handle: '"
-                    + website.getHandle() + "' in '" + length + "' seconds");
+    private List<WeblogEntry> getWeblogEntries(Weblog weblog) {
+        return weblogEntryManager.getWeblogEntries(weblog);
+    }
+
+    private Document createDocument(WeblogEntry entry) {
+        Document document = new Document();
+        document.add(new StringField(FIELD_WEBLOG_HANDLE, entry.getWeblog().getHandle(), Field.Store.YES));
+        document.add(new StringField(FIELD.Weblog_NAME, entry.getWeblog().getName(), Field.Store.YES));
+        document.add(new StringField(FIELD_ENTRY_ID, String.valueOf(entry.getId()), Field.Store.YES));
+        document.add(new TextField(FIELD_ENTRY_TITLE, entry.getTitle(), Field.Store.YES));
+        document.add(new TextField(FIELD_ENTRY_CONTENT, entry.getContent(), Field.Store.YES));
+        List<WeblogEntryComment> comments = weblogEntryManager.getComments(entry);
+        for (WeblogEntryComment comment : comments) {
+            document.add(new TextField(FIELD_ENTRY_COMMENT, comment.getContent(), Field.Store.YES));
         }
+        return document;
+    }
+
+    public static void main(String[] args) {
+        RebuildWebsiteIndexOperation operation = new RebuildWebsiteIndexOperation();
+        operation.execute();
     }
 }
