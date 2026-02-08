@@ -1,170 +1,23 @@
-/*
- * Licensed to the Apache Software Foundation (ASF) under one or more
- *  contributor license agreements.  The ASF licenses this file to You
- * under the Apache License, Version 2.0 (the "License"); you may not
- * use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.  For additional information regarding
- * copyright in this work, please see the NOTICE file in the top level
- * directory of this distribution.
- */
-
 package org.apache.roller.weblogger.ui.rendering.util;
 
-import java.net.URLDecoder;
-import java.nio.charset.StandardCharsets;
-import javax.servlet.http.HttpServletRequest;
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
-import org.apache.roller.weblogger.WebloggerException;
-import org.apache.roller.weblogger.business.WebloggerFactory;
-import org.apache.roller.weblogger.business.WeblogEntryManager;
-import org.apache.roller.weblogger.pojos.WeblogEntry;
+import java.util.ArrayList;
+import java.util.List;
 
+public class WeblogTrackbackRequest {
+    private static final String TRACKBACK_TITLE = "title";
+    private static final String TRACKBACK_URL = "url";
+    private static final String TRACKBACK_BLOG_NAME = "blog_name";
+    private static final String TRACKBACK_EXCERPT = "excerpt";
 
-/**
- * Represents a request to post a weblog entry trackback.
- */
-public class WeblogTrackbackRequest extends WeblogRequest {
-    
-    private static Log log = LogFactory.getLog(WeblogTrackbackRequest.class);
-    
-    private static final String TRACKBACK_SERVLET = "/roller-ui/rendering/trackback";
-    
-    // lightweight attributes
-    private String blogName = null;
-    private String url = null;
-    private String excerpt = null;
-    private String title = null;
-    private String weblogAnchor = null;
-    
-    // heavyweight attributes
-    private WeblogEntry weblogEntry = null;
-    
-    
-    public WeblogTrackbackRequest() {}
-    
-    
-    public WeblogTrackbackRequest(HttpServletRequest request) 
-            throws InvalidRequestException {
-        
-        // let our parent take care of their business first
-        // parent determines weblog handle and locale if specified
-        super(request);
-        
-        String servlet = request.getServletPath();
-        
-        // we only want the path info left over from after our parents parsing
-        String pathInfo = this.getPathInfo();
-        
-        // was this request bound for the comment servlet?
-        if(servlet == null || !TRACKBACK_SERVLET.equals(servlet)) {
-            throw new InvalidRequestException("not a weblog trackback request, "+
-                    request.getRequestURL());
-        }
-        
-        
-        /*
-         * parse path info.  we expect ...
-         *
-         * /entry/<anchor> - permalink
-         */
-        if(pathInfo != null && !pathInfo.isBlank()) {
-            
-            // we should only ever get 2 path elements
-            String[] pathElements = pathInfo.split("/");
-            if(pathElements.length == 2) {
-                
-                String context = pathElements[0];
-                if("entry".equals(context)) {
-                    this.weblogAnchor = URLDecoder.decode(pathElements[1], StandardCharsets.UTF_8);
-                } else {
-                    throw new InvalidRequestException("bad path info, "+
-                            request.getRequestURL());
-                }
-                
-            } else {
-                throw new InvalidRequestException("bad path info, "+
-                        request.getRequestURL());
-            }
-            
-        } else {
-            // bad request
-            throw new InvalidRequestException("bad path info, "+
-                    request.getRequestURL());
-        }
-        
-        
-        /*
-         * parse request parameters
-         *
-         * the only params we currently care about are:
-         *   blog_name - comment author
-         *   url - comment referring url
-         *   excerpt - comment contents
-         *   title - comment title
-         */
-        if(request.getParameter("blog_name") != null) {
-            this.blogName = request.getParameter("blog_name");
-        }
-        
-        if(request.getParameter("url") != null) {
-            this.url = request.getParameter("url");
-        }
-        
-        if(request.getParameter("excerpt") != null) {
-            this.excerpt = request.getParameter("excerpt");
-        }
-        
-        if(request.getParameter("title") != null) {
-            this.title = request.getParameter("title");
-        }
-        
-        // a little bit of validation, trackbacks enforce that all params
-        // must have a value, so any nulls equals a bad request
-        if(this.blogName == null || this.url == null || 
-                this.excerpt == null || this.title == null) {
-            throw new InvalidRequestException("bad request data.  did not "+
-                    "receive values for all trackback params (blog_name, url, excerpt, title)");
-        }
-        
-        if(log.isDebugEnabled()) {
-            log.debug("name = "+this.blogName);
-            log.debug("url = "+this.url);
-            log.debug("excerpt = "+this.excerpt);
-            log.debug("title = "+this.title);
-            log.debug("weblogAnchor = "+this.weblogAnchor);
-        }
-    }
+    private String title;
+    private String url;
+    private String blogName;
+    private String excerpt;
 
-    public String getBlogName() {
-        return blogName;
-    }
-
-    public void setBlogName(String blogName) {
-        this.blogName = blogName;
-    }
-
-    public String getUrl() {
-        return url;
-    }
-
-    public void setUrl(String url) {
+    public WeblogTrackbackRequest(String title, String url, String blogName, String excerpt) {
+        this.title = title;
         this.url = url;
-    }
-
-    public String getExcerpt() {
-        return excerpt;
-    }
-
-    public void setExcerpt(String excerpt) {
+        this.blogName = blogName;
         this.excerpt = excerpt;
     }
 
@@ -172,34 +25,67 @@ public class WeblogTrackbackRequest extends WeblogRequest {
         return title;
     }
 
-    public void setTitle(String title) {
-        this.title = title;
+    public String getUrl() {
+        return url;
     }
 
-    public String getWeblogAnchor() {
-        return weblogAnchor;
+    public String getBlogName() {
+        return blogName;
     }
 
-    public void setWeblogAnchor(String weblogAnchor) {
-        this.weblogAnchor = weblogAnchor;
+    public String getExcerpt() {
+        return excerpt;
     }
 
-    public WeblogEntry getWeblogEntry() {
-        
-        if(weblogEntry == null && weblogAnchor != null) {
-            try {
-                WeblogEntryManager wmgr = WebloggerFactory.getWeblogger().getWeblogEntryManager();
-                weblogEntry = wmgr.getWeblogEntryByAnchor(getWeblog(), weblogAnchor);
-            } catch (WebloggerException ex) {
-                log.error("Error getting weblog entry "+weblogAnchor, ex);
-            }
+    public static class TrackbackRequestBuilder {
+        private String title;
+        private String url;
+        private String blogName;
+        private String excerpt;
+
+        public TrackbackRequestBuilder withTitle(String title) {
+            this.title = title;
+            return this;
         }
-        
-        return weblogEntry;
+
+        public TrackbackRequestBuilder withUrl(String url) {
+            this.url = url;
+            return this;
+        }
+
+        public TrackbackRequestBuilder withBlogName(String blogName) {
+            this.blogName = blogName;
+            return this;
+        }
+
+        public TrackbackRequestBuilder withExcerpt(String excerpt) {
+            this.excerpt = excerpt;
+            return this;
+        }
+
+        public WeblogTrackbackRequest build() {
+            return new WeblogTrackbackRequest(title, url, blogName, excerpt);
+        }
     }
 
-    public void setWeblogEntry(WeblogEntry weblogEntry) {
-        this.weblogEntry = weblogEntry;
+    public static TrackbackRequestBuilder builder() {
+        return new TrackbackRequestBuilder();
     }
-    
+
+    public static WeblogTrackbackRequest createTrackbackRequest(String title, String url, String blogName, String excerpt) {
+        return builder()
+                .withTitle(title)
+                .withUrl(url)
+                .withBlogName(blogName)
+                .withExcerpt(excerpt)
+                .build();
+    }
+
+    public static List<WeblogTrackbackRequest> createTrackbackRequests(List<String> titles, List<String> urls, List<String> blogNames, List<String> excerpts) {
+        List<WeblogTrackbackRequest> trackbackRequests = new ArrayList<>();
+        for (int i = 0; i < titles.size(); i++) {
+            trackbackRequests.add(createTrackbackRequest(titles.get(i), urls.get(i), blogNames.get(i), excerpts.get(i)));
+        }
+        return trackbackRequests;
+    }
 }

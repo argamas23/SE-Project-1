@@ -1,168 +1,153 @@
-/*
- * Licensed to the Apache Software Foundation (ASF) under one or more
- *  contributor license agreements.  The ASF licenses this file to You
- * under the Apache License, Version 2.0 (the "License"); you may not
- * use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.  For additional information regarding
- * copyright in this work, please see the NOTICE file in the top level
- * directory of this distribution.
- */
-
 package org.apache.roller.weblogger.ui.rendering.util;
 
-import javax.servlet.http.HttpServletRequest;
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
 import org.apache.roller.weblogger.WebloggerException;
-import org.apache.roller.weblogger.business.themes.ThemeNotFoundException;
+import org.apache.roller.weblogger.config.WebloggerRuntimeConfig;
+import org.apache.roller.weblogger.business.WeblogManager;
 import org.apache.roller.weblogger.business.WebloggerFactory;
-import org.apache.roller.weblogger.business.themes.ThemeManager;
-import org.apache.roller.weblogger.business.WeblogEntryManager;
-import org.apache.roller.weblogger.pojos.Theme;
+import org.apache.roller.weblogger.pojos.Weblog;
 import org.apache.roller.weblogger.pojos.WeblogEntry;
-import org.apache.roller.weblogger.util.URLUtilities;
+import org.apache.roller.weblogger.ui.rendering.util.PreviewUtils;
+import org.apache.roller.weblogger.util.RollerConstants;
+import org.apache.roller.weblogger.util.DateUtil;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.List;
+import java.util.Map;
 
-/**
- * Represents a request for a weblog preview.
- */
-public class WeblogPreviewRequest extends WeblogPageRequest {
-    
-    private static Log log = LogFactory.getLog(WeblogPreviewRequest.class);
-    
-    private static final String PREVIEW_SERVLET = "/roller-ui/authoring/preview";
-    
-    // lightweight attributes
-    private String themeName = null;
-    private String previewEntry = null;
-    private String type = "standard";
-    
-    // heavyweight attributes
-    private Theme theme = null;
-    private WeblogEntry weblogEntry = null;
-    
-    public WeblogPreviewRequest(HttpServletRequest request) 
-            throws InvalidRequestException {
-        
-        // let parent go first
-        super(request);
-        
-        // we may have a specific theme to preview
-        if(request.getParameter("theme") != null) {
-            this.themeName = request.getParameter("theme");
-        }
+public class WeblogPreviewRequest {
 
-        //we may need to know the type of page we are going to preview
-         if(request.getParameter("type") != null) {
-             this.setType(request.getParameter("type"));
-         }
-        
-        // we may also have a specific entry to preview
-        if(request.getParameter("previewEntry") != null) {
-            this.previewEntry = URLUtilities.decode(request.getParameter("previewEntry"));
-        }
+    private static final Logger LOGGER = LoggerFactory.getLogger(WeblogPreviewRequest.class);
+    private static final String DEFAULT_DATE_FORMAT = "yyyy-MM-dd";
 
-        if(log.isDebugEnabled()) {
-            log.debug("theme = "+this.themeName);
-        }
-    }
-    
-    
-    @Override
-    boolean isValidDestination(String servlet) {
-        return (servlet != null && PREVIEW_SERVLET.equals(servlet));
-    }
-    
-    
-    public String getThemeName() {
-        return themeName;
+    private Weblog weblog;
+    private WeblogEntry entry;
+    private String format;
+    private String theme;
+    private String dateHeader;
+    private String action;
+    private List<String> messages;
+    private Map<String, String> templateModel;
+
+    public WeblogPreviewRequest() {
+        this.messages = new ArrayList<>();
+        this.templateModel = Map.of();
     }
 
-    public void setThemeName(String theme) {
-        this.themeName = theme;
-    }
-    
-    // override so that previews never show login status
-    @Override
-    public String getAuthenticUser() {
-        return null;
-    }
-    
-    // override so that previews never show login status
-    @Override
-    public boolean isLoggedIn() {
-        return false;
+    public void setWeblog(Weblog weblog) {
+        this.weblog = weblog;
     }
 
-    public Theme getTheme() {
-        
-        if(theme == null && themeName != null) {
-            try {
-                ThemeManager themeMgr = WebloggerFactory.getWeblogger().getThemeManager();
-                theme = themeMgr.getTheme(themeName);
-            } catch(ThemeNotFoundException tnfe) {
-                // bogus theme specified ... don't worry about it
-            } catch(WebloggerException re) {
-                log.error("Error looking up theme "+themeName, re);
-            }
-        }
-        
-        return theme;
+    public void setEntry(WeblogEntry entry) {
+        this.entry = entry;
     }
 
-    public void setTheme(Theme theme) {
+    public void setFormat(String format) {
+        this.format = format;
+    }
+
+    public void setTheme(String theme) {
         this.theme = theme;
     }
 
-    public String getPreviewEntry() {
-        return previewEntry;
+    public void setDateHeader(String dateHeader) {
+        this.dateHeader = dateHeader;
     }
 
-    public void setPreviewEntry(String previewEntry) {
-        this.previewEntry = previewEntry;
+    public void setAction(String action) {
+        this.action = action;
     }
-    
-    // if we have a preview entry we would prefer to return that
-    @Override
-    public WeblogEntry getWeblogEntry() {
-        
-        if(weblogEntry == null && 
-                (previewEntry != null || super.getWeblogAnchor() != null)) {
-            
-            String anchor = previewEntry;
-            if(previewEntry == null) {
-                anchor = super.getWeblogAnchor();
+
+    public List<String> getMessages() {
+        return messages;
+    }
+
+    public Map<String, String> getTemplateModel() {
+        return templateModel;
+    }
+
+    public void setupTemplateModel() {
+        this.templateModel = Map.of(
+                "weblog", weblog.getId(),
+                "entry", entry.getId(),
+                "action", action,
+                "dateHeader", dateHeader
+        );
+    }
+
+    public void prepareForRendering() {
+        try {
+            if ("view".equals(action)) {
+                renderView();
+            } else if ("edit".equals(action)) {
+                renderEdit();
+            } else {
+                messages.add("Invalid action: " + action);
             }
-            
-            try {
-                WeblogEntryManager wmgr = WebloggerFactory.getWeblogger().getWeblogEntryManager();
-                weblogEntry = wmgr.getWeblogEntryByAnchor(getWeblog(), anchor);
-            } catch (WebloggerException ex) {
-                log.error("Error getting weblog entry "+anchor, ex);
-            }
+        } catch (WebloggerException e) {
+            LOGGER.error(e.getMessage(), e);
+            messages.add("Error occurred while preparing for rendering: " + e.getMessage());
         }
-        
-        return weblogEntry;
-    }
-    
-    @Override
-    public void setWeblogEntry(WeblogEntry weblogEntry) {
-        this.weblogEntry = weblogEntry;
     }
 
-    public String getType() {
-        return type;
+    private void renderView() throws WebloggerException {
+        if (weblog == null || entry == null) {
+            messages.add("Invalid weblog or entry");
+            return;
+        }
+        String date = DateUtil.formatDate(new Date(), DEFAULT_DATE_FORMAT);
+        if (dateHeader != null) {
+            date = dateHeader;
+        }
+        templateModel.put("date", date);
+        templateModel.put("weblog", weblog.getName());
+        templateModel.put("entry", entry.getTitle());
+        if (theme != null) {
+            templateModel.put("theme", theme);
+        }
     }
 
-    public void setType(String type) {
-        this.type = type;
+    private void renderEdit() throws WebloggerException {
+        if (weblog == null || entry == null) {
+            messages.add("Invalid weblog or entry");
+            return;
+        }
+        templateModel.put("weblog", weblog.getName());
+        templateModel.put("entry", entry.getTitle());
+        if (theme != null) {
+            templateModel.put("theme", theme);
+        }
+    }
+
+    public void loadWeblog() {
+        try {
+            WeblogManager weblogManager = WebloggerFactory.getWeblogger().getWeblogManager();
+            weblog = weblogManager.getWeblog(weblog.getId());
+        } catch (WebloggerException e) {
+            LOGGER.error(e.getMessage(), e);
+            messages.add("Error occurred while loading weblog: " + e.getMessage());
+        }
+    }
+
+    public void loadEntry() {
+        try {
+            WeblogManager weblogManager = WebloggerFactory.getWeblogger().getWeblogManager();
+            entry = weblogManager.getWeblogEntry(entry.getId());
+        } catch (WebloggerException e) {
+            LOGGER.error(e.getMessage(), e);
+            messages.add("Error occurred while loading entry: " + e.getMessage());
+        }
+    }
+
+    public void loadTheme() {
+        try {
+            WebloggerRuntimeConfig runtimeConfig = WebloggerFactory.getWeblogger().getRuntimeConfig();
+            theme = runtimeConfig.getProperty(weblog.getId(), "theme");
+        } catch (WebloggerException e) {
+            LOGGER.error(e.getMessage(), e);
+            messages.add("Error occurred while loading theme: " + e.getMessage());
+        }
     }
 }

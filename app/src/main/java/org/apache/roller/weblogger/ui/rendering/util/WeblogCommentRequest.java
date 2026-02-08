@@ -1,213 +1,129 @@
-/*
- * Licensed to the Apache Software Foundation (ASF) under one or more
- *  contributor license agreements.  The ASF licenses this file to You
- * under the Apache License, Version 2.0 (the "License"); you may not
- * use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.  For additional information regarding
- * copyright in this work, please see the NOTICE file in the top level
- * directory of this distribution.
- */
-
 package org.apache.roller.weblogger.ui.rendering.util;
 
-import java.net.URLDecoder;
-import java.nio.charset.StandardCharsets;
-import javax.servlet.http.HttpServletRequest;
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.roller.weblogger.WebloggerException;
 import org.apache.roller.weblogger.business.WebloggerFactory;
 import org.apache.roller.weblogger.business.WeblogEntryManager;
+import org.apache.roller.weblogger.business.WeblogManager;
+import org.apache.roller.weblogger.config.WebloggerRuntimeConfig;
+import org.apache.roller.weblogger.pojos.Weblog;
 import org.apache.roller.weblogger.pojos.WeblogEntry;
-import org.apache.roller.weblogger.util.Utilities;
+import org.apache.roller.weblogger.pojos.WeblogEntryComment;
+import org.apache.roller.weblogger.util.RollerContext;
+import org.apache.roller.weblogger.util.UIUtil;
 
+import javax.servlet.http.HttpServletRequest;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
-/**
- * Represents a request to post a weblog entry comment.
- */
-public class WeblogCommentRequest extends WeblogRequest {
-    
-    private static Log log = LogFactory.getLog(WeblogCommentRequest.class);
-    
-    private static final String COMMENT_SERVLET = "/roller-ui/rendering/comment";
-    
-    // lightweight attributes
-    private String name = null;
-    private String email = null;
-    private String url = null;
-    private String content = null;
-    private boolean notify = false;
-    private String weblogAnchor = null;
-    
-    // heavyweight attributes
-    private WeblogEntry weblogEntry = null;
-    
-    
-    public WeblogCommentRequest() {}
-    
-    
-    public WeblogCommentRequest(HttpServletRequest request) 
-            throws InvalidRequestException {
-        
-        // let our parent take care of their business first
-        // parent determines weblog handle and locale if specified
-        super(request);
-        
-        String servlet = request.getServletPath();
-        
-        // we only want the path info left over from after our parents parsing
-        String pathInfo = this.getPathInfo();
-        
-        // was this request bound for the comment servlet?
-        if(servlet == null || !COMMENT_SERVLET.equals(servlet)) {
-            throw new InvalidRequestException("not a weblog comment request, "+
-                    request.getRequestURL());
+public class WeblogCommentRequest {
+
+    private static final Logger LOGGER = Logger.getLogger(WeblogCommentRequest.class.getName());
+    private static final String APPROVED = "approved";
+    private static final String PENDING = "pending";
+    private static final String SPAM = "spam";
+    private static final String DELETED = "deleted";
+
+    private WeblogCommentRequest() {
+    }
+
+    public static void processCommentRequest(HttpServletRequest request) {
+        Weblog weblog = getWeblog(request);
+        WeblogEntry entry = getEntry(request);
+        if (entry == null || weblog == null) {
+            return;
         }
-        
-        
-        /*
-         * parse path info.  we expect ...
-         *
-         * /entry/<anchor> - permalink
-         */
-        if(pathInfo != null && !pathInfo.isBlank()) {
-            
-            // we should only ever get 2 path elements
-            String[] pathElements = pathInfo.split("/");
-            if(pathElements.length == 2) {
-                
-                String context = pathElements[0];
-                if("entry".equals(context)) {
-                    this.weblogAnchor = URLDecoder.decode(pathElements[1], StandardCharsets.UTF_8);
-                } else {
-                    throw new InvalidRequestException("bad path info, "+
-                            request.getRequestURL());
-                }
-                
-            } else {
-                throw new InvalidRequestException("bad path info, "+
-                        request.getRequestURL());
-            }
-            
-        } else {
-            // bad request
-            throw new InvalidRequestException("bad path info, "+
-                    request.getRequestURL());
-        }
-        
-        
-        /*
-         * parse request parameters
-         *
-         * the only params we currently care about are:
-         *   name - comment author
-         *   email - comment email
-         *   url - comment referring url
-         *   content - comment contents
-         *   notify - if commenter wants to receive notifications
-         */
-        if(request.getParameter("name") != null) {
-            this.name = Utilities.removeHTML(request.getParameter("name"));
-        }
-        
-        if(request.getParameter("email") != null) {
-            this.email = Utilities.removeHTML(request.getParameter("email"));
-        }
-        
-        if(request.getParameter("url") != null) {
-            this.url = Utilities.removeHTML(request.getParameter("url"));
-        }
-        
-        if(request.getParameter("content") != null) {
-            this.content = request.getParameter("content");
-        }
-        
-        if(request.getParameter("notify") != null) {
-            this.notify = true;
-        }
-        
-        if(log.isDebugEnabled()) {
-            log.debug("name = "+this.name);
-            log.debug("email = "+this.email);
-            log.debug("url = "+this.url);
-            log.debug("content = "+this.content);
-            log.debug("notify = "+this.notify);
-            log.debug("weblogAnchor = "+this.weblogAnchor);
+
+        String action = request.getParameter("action");
+        CommentAction commentAction = getCommentAction(action);
+        switch (commentAction) {
+            case APPROVE:
+                approveComment(request, entry, weblog);
+                break;
+            case DELETE:
+                deleteComment(request, entry, weblog);
+                break;
+            case SPAM:
+                markCommentAsSpam(request, entry, weblog);
+                break;
+            case PENDING:
+                markCommentAsPending(request, entry, weblog);
+                break;
+            default:
+                break;
         }
     }
 
-    public String getName() {
-        return name;
+    private static Weblog getWeblog(HttpServletRequest request) {
+        RollerContext rollerContext = UIUtil.getRollerContext(request);
+        return WebloggerFactory.getWeblogger().getWeblogManager().getWeblog(rollerContext.getWeblogHandle());
     }
 
-    public void setName(String name) {
-        this.name = name;
+    private static WeblogEntry getEntry(HttpServletRequest request) {
+        WeblogManager weblogManager = WebloggerFactory.getWeblogger().getWeblogManager();
+        String entryId = request.getParameter("entryId");
+        return weblogManager.getWeblogEntry(entryId);
     }
 
-    public String getEmail() {
-        return email;
-    }
-
-    public void setEmail(String email) {
-        this.email = email;
-    }
-
-    public String getUrl() {
-        return url;
-    }
-
-    public void setUrl(String url) {
-        this.url = url;
-    }
-
-    public String getContent() {
-        return content;
-    }
-
-    public void setContent(String content) {
-        this.content = content;
-    }
-
-    public boolean isNotify() {
-        return notify;
-    }
-
-    public void setNotify(boolean notify) {
-        this.notify = notify;
-    }
-
-    public String getWeblogAnchor() {
-        return weblogAnchor;
-    }
-
-    public void setWeblogAnchor(String weblogAnchor) {
-        this.weblogAnchor = weblogAnchor;
-    }
-
-    public WeblogEntry getWeblogEntry() {
-        
-        if(weblogEntry == null && weblogAnchor != null) {
-            try {
-                WeblogEntryManager wmgr = WebloggerFactory.getWeblogger().getWeblogEntryManager();
-                weblogEntry = wmgr.getWeblogEntryByAnchor(getWeblog(), weblogAnchor);
-            } catch (WebloggerException ex) {
-                log.error("Error getting weblog entry "+weblogAnchor, ex);
+    private static CommentAction getCommentAction(String action) {
+        for (CommentAction commentAction : CommentAction.values()) {
+            if (commentAction.name().equalsIgnoreCase(action)) {
+                return commentAction;
             }
         }
-        
-        return weblogEntry;
+        return CommentAction.NONE;
     }
 
-    public void setWeblogEntry(WeblogEntry weblogEntry) {
-        this.weblogEntry = weblogEntry;
+    private static void approveComment(HttpServletRequest request, WeblogEntry entry, Weblog weblog) {
+        WeblogEntryComment comment = getCommentById(request, entry);
+        if (comment != null) {
+            comment.setStatus(APPROVED);
+            WebloggerFactory.getWeblogger().getWeblogEntryManager().saveComment(comment);
+        }
     }
-    
+
+    private static void deleteComment(HttpServletRequest request, WeblogEntry entry, Weblog weblog) {
+        WeblogEntryComment comment = getCommentById(request, entry);
+        if (comment != null) {
+            comment.setStatus(DELETED);
+            WebloggerFactory.getWeblogger().getWeblogEntryManager().saveComment(comment);
+        }
+    }
+
+    private static void markCommentAsSpam(HttpServletRequest request, WeblogEntry entry, Weblog weblog) {
+        WeblogEntryComment comment = getCommentById(request, entry);
+        if (comment != null) {
+            comment.setStatus(SPAM);
+            WebloggerFactory.getWeblogger().getWeblogEntryManager().saveComment(comment);
+        }
+    }
+
+    private static void markCommentAsPending(HttpServletRequest request, WeblogEntry entry, Weblog weblog) {
+        WeblogEntryComment comment = getCommentById(request, entry);
+        if (comment != null) {
+            comment.setStatus(PENDING);
+            WebloggerFactory.getWeblogger().getWeblogEntryManager().saveComment(comment);
+        }
+    }
+
+    private static WeblogEntryComment getCommentById(HttpServletRequest request, WeblogEntry entry) {
+        String commentId = request.getParameter("commentId");
+        List<WeblogEntryComment> comments = new ArrayList<>(entry.getComments());
+        for (WeblogEntryComment comment : comments) {
+            if (StringUtils.equals(comment.getId(), commentId)) {
+                return comment;
+            }
+        }
+        return null;
+    }
+
+    private enum CommentAction {
+        APPROVE,
+        DELETE,
+        SPAM,
+        PENDING,
+        NONE
+    }
 }

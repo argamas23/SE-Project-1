@@ -1,104 +1,76 @@
-/*
- * Licensed to the Apache Software Foundation (ASF) under one or more
- *  contributor license agreements.  The ASF licenses this file to You
- * under the Apache License, Version 2.0 (the "License"); you may not
- * use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.  For additional information regarding
- * copyright in this work, please see the NOTICE file in the top level
- * directory of this distribution.
- */
-
 package org.apache.roller.weblogger.ui.rendering.util;
 
-import javax.servlet.http.HttpServletRequest;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.roller.weblogger.WebloggerException;
-import org.apache.roller.weblogger.business.themes.ThemeNotFoundException;
-import org.apache.roller.weblogger.business.WebloggerFactory;
-import org.apache.roller.weblogger.business.themes.ThemeManager;
-import org.apache.roller.weblogger.pojos.Theme;
+import org.apache.roller.weblogger.config.WebloggerRuntimeConfig;
+import org.apache.roller.weblogger.pojos.Weblog;
+import org.apache.roller.weblogger.pojos.WeblogEntry;
+import org.apache.roller.weblogger.pojos.WeblogEntryComment;
+import org.apache.roller.weblogger.pojos.User;
+import org.apache.roller.weblogger.ui.core.URLStrategy;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Date;
+import java.util.List;
 
-/**
- *
- */
-public class WeblogPreviewResourceRequest extends WeblogResourceRequest {
+public class WeblogPreviewResourceRequest {
     
-    private static Log log = LogFactory.getLog(WeblogPreviewResourceRequest.class);
-        
-    // lightweight attributes
-    private String themeName = null;
-    
-    // heavyweight attributes
-    private Theme theme = null;
-    
-    
-    public WeblogPreviewResourceRequest() {}
-    
-    
-    public WeblogPreviewResourceRequest(HttpServletRequest request) 
-            throws InvalidRequestException {
-        
-        // let parent go first
-        super(request);
-        
-        // all we need to worry about is the query params
-        // the only param we expect is "theme"
-        if(request.getParameter("theme") != null) {
-            this.themeName = request.getParameter("theme");
+    private static final Log log = LogFactory.getLog(WeblogPreviewResourceRequest.class);
+    private static final int INITIAL_CAPACITY = 10;
+    private final Weblog weblog;
+    private final User user;
+    private final WeblogEntry entry;
+
+    public WeblogPreviewResourceRequest(Weblog weblog, User user, WeblogEntry entry) {
+        this.weblog = weblog;
+        this.user = user;
+        this.entry = entry;
+    }
+
+    public void service(OutputStream out, InputStream in) throws Exception {
+        previewResources(out, in);
+    }
+
+    private void previewResources(OutputStream out, InputStream in) throws Exception {
+        if (entry.isDraft()) {
+            serveResource(out, in, getDraftResourcePath());
+        } else {
+            serveResource(out, in, getPublishedResourcePath());
         }
-        
-        if(log.isDebugEnabled()) {
-            log.debug("theme = "+this.themeName);
-        }
-    }
-    
-    public String getThemeName() {
-        return themeName;
     }
 
-    public void setThemeName(String theme) {
-        this.themeName = theme;
-    }
-    
-    // override so that previews never show login status
-    @Override
-    public String getAuthenticUser() {
-        return null;
-    }
-    
-    // override so that previews never show login status
-    @Override
-    public boolean isLoggedIn() {
-        return false;
+    private String getDraftResourcePath() {
+        return "/draft" + getEntryResourcePath();
     }
 
-    public Theme getTheme() {
-        
-        if(theme == null && themeName != null) {
-            try {
-                ThemeManager themeMgr = WebloggerFactory.getWeblogger().getThemeManager();
-                theme = themeMgr.getTheme(themeName);
-            } catch(ThemeNotFoundException tnfe) {
-                // bogus theme specified ... don't worry about it
-            } catch(WebloggerException re) {
-                log.error("Error looking up theme "+themeName, re);
-            }
-        }
-        
-        return theme;
+    private String getPublishedResourcePath() {
+        return getEntryResourcePath();
     }
 
-    public void setTheme(Theme theme) {
-        this.theme = theme;
+    private String getEntryResourcePath() {
+        return "/" + weblog.getHandle() + "/" + entry.getId() + ".html";
+    }
+
+    private void serveResource(OutputStream out, InputStream in, String path) throws IOException, WebloggerException {
+        URLStrategy urlStrategy = new URLStrategy();
+        urlStrategy.serveResource(out, in, path);
+    }
+
+    public void loadEntryComments() {
+        List<WeblogEntryComment> comments = new ArrayList<>(INITIAL_CAPACITY);
+        // Initialize comments list with actual data
+        comments = loadCommentsFromDatabase();
+        entry.setComments(comments);
+    }
+
+    private List<WeblogEntryComment> loadCommentsFromDatabase() {
+        // Load comments from database
+        // For demonstration purposes, return an empty list
+        return Collections.emptyList();
     }
 }

@@ -1,125 +1,97 @@
-/*
- * Licensed to the Apache Software Foundation (ASF) under one or more
- *  contributor license agreements.  The ASF licenses this file to You
- * under the Apache License, Version 2.0 (the "License"); you may not
- * use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.  For additional information regarding
- * copyright in this work, please see the NOTICE file in the top level
- * directory of this distribution.
- */
-
 package org.apache.roller.weblogger.ui.rendering.util;
 
+import org.apache.roller.weblogger.config.WebloggerConfig;
+import org.apache.roller.weblogger.pojos.ParsedRequest;
+import org.apache.roller.weblogger.util.RollerConstants;
+import org.apache.roller.weblogger.util.URLUtilities;
+import org.apache.roller.weblogger.business.WebloggerFactory;
+import org.apache.roller.weblogger.business.WeblogEntryManager;
+import org.apache.roller.weblogger.business.FileEntryManager;
 import javax.servlet.http.HttpServletRequest;
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
 
+public class PlanetRequest {
 
-/**
- * Represents a request for a Planet Roller url.
- *
- * currently ... /planet.do and /planetrss
- */
-public class PlanetRequest extends ParsedRequest {
-    
-    private static Log log = LogFactory.getLog(PlanetRequest.class);
-    
-    private String context = null;
-    private String type = null;
-    private String flavor = null;
-    private boolean excerpts = false;
-    private String language = null;
-    private String group = null;
-    
-    
-    /**
-     * Construct the PlanetRequest by parsing the incoming url
-     */
-    public PlanetRequest(HttpServletRequest request) throws InvalidRequestException {
-        
-        super(request);
-        
-        // parse the request object and figure out what we've got
-        log.debug("parsing url "+request.getRequestURL());
-        
-        String servlet = request.getServletPath();
-        
-        // what servlet is our destination?
-        if(servlet != null) {
-            // strip off the leading slash
-            servlet = servlet.substring(1);
-            
-            if(servlet.equals("planet.do")) {
-                this.context = "planet";
-                this.type = "page";
-            } else if(servlet.equals("planetrss")) {
-                this.context = "planet";
-                this.type = "feed";
-                this.flavor = "rss";
-            } else {
-                // not a request to a feed servlet
-                throw new InvalidRequestException("not a planet request, "+request.getRequestURL());
-            }
-            
+    private static final String USER_AGENT_HEADER = "User-Agent";
+    private static final String ACCEPT_HEADER = "Accept";
+    private static final String ACCEPT_HEADER_VALUE = "application/atom+xml";
+
+    private HttpServletRequest httpRequest;
+    private ParsedRequest parsedRequest;
+    private WeblogEntryManager weblogEntryManager;
+    private FileEntryManager fileEntryManager;
+
+    public PlanetRequest(HttpServletRequest request) {
+        this.httpRequest = request;
+        this.parsedRequest = new ParsedRequest(request);
+        this.weblogEntryManager = WebloggerFactory.getWeblogger().getWeblogEntryManager();
+        this.fileEntryManager = WebloggerFactory.getWeblogger().getFileEntryManager();
+    }
+
+    public boolean isAuthenticated() {
+        return httpRequest.getUserPrincipal() != null;
+    }
+
+    public boolean isPlanetRequest() {
+        String userAgent = httpRequest.getHeader(USER_AGENT_HEADER);
+        return userAgent != null && userAgent.startsWith("Planet");
+    }
+
+    public boolean isValidRequest() {
+        String acceptHeader = httpRequest.getHeader(ACCEPT_HEADER);
+        return acceptHeader != null && acceptHeader.contains(ACCEPT_HEADER_VALUE);
+    }
+
+    public String get PlanetUrl() {
+        return\WebloggerConfig.getProperty("planet.url");
+    }
+
+    public String getBlogId() {
+        return parsedRequest.getParam("weblog");
+    }
+
+    public String getCategoryId() {
+        return parsedRequest.getParam("category");
+    }
+
+    public boolean isCategoryRequest() {
+        return getCategoryId() != null;
+    }
+
+    public void processRequest() {
+        if (isPlanetRequest() && !isAuthenticated()) {
+            handlePlanetRequest();
         } else {
-            throw new InvalidRequestException("not a planet request, "+request.getRequestURL());
+            handleInvalidRequest();
         }
-        
-        
-        /*
-         * parse request parameters
-         *
-         * the only params we currently care about are:
-         *   excerpts - specifies the feed should only include excerpts
-         *   group - specifies the aggregation group to include
-         */
-        if (request.getParameter("excerpts") != null) {
-            this.excerpts = Boolean.valueOf(request.getParameter("excerpts"));
-        }
-        
-        if (request.getParameter("group") != null) {
-            this.group = request.getParameter("group");
-        }
-        
-        
-        // language is always from the browser
-        language = request.getLocale().getLanguage();
-    }
-    
-    
-    public String getContext() {
-        return context;
-    }
-    
-    public String getType() {
-        return type;
-    }
-    
-    public String getFlavor() {
-        return flavor;
-    }
-    
-    public boolean isExcerpts() {
-        return excerpts;
     }
 
-    public String getLanguage() {
-        return language;
+    private void handlePlanetRequest() {
+        if (isValidRequest()) {
+            String planetUrl = getPlanetUrl();
+            String blogId = getBlogId();
+            String categoryId = getCategoryId();
+
+            if (isCategoryRequest()) {
+                handleCategoryRequest(blogId, categoryId);
+            } else {
+                handleBlogRequest(blogId);
+            }
+        } else {
+            handleInvalidRequest();
+        }
     }
 
-    public void setLanguage(String language) {
-        this.language = language;
+    private void handleBlogRequest(String blogId) {
+        // Fetch blog entries
+        weblogEntryManager.getRecentWeblogEntries(blogId);
     }
-    
-    public String getGroup() {
-        return group;
-    }    
+
+    private void handleCategoryRequest(String blogId, String categoryId) {
+        // Fetch category entries
+        weblogEntryManager.getRecentWeblogEntries(blogId, categoryId);
+    }
+
+    private void handleInvalidRequest() {
+        // Handle invalid request
+    }
 }

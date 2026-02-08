@@ -1,166 +1,80 @@
-/*
- * Licensed to the Apache Software Foundation (ASF) under one or more
- *  contributor license agreements.  The ASF licenses this file to You
- * under the Apache License, Version 2.0 (the "License"); you may not
- * use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.  For additional information regarding
- * copyright in this work, please see the NOTICE file in the top level
- * directory of this distribution.
- */
-
 package org.apache.roller.weblogger.ui.rendering.util;
 
-import java.text.SimpleDateFormat;
-import java.util.Date;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.util.HashMap;
+import java.util.Map;
 
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
+import org.apache.roller.weblogger.config.WebloggerConfig;
+import org.apache.roller.weblogger.util.DateUtil;
+import org.apache.roller.weblogger.util.RollerConstants;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
-import org.apache.roller.util.RollerConstants;
-import org.apache.roller.util.DateUtil;
-import org.apache.roller.weblogger.ui.rendering.mobile.MobileDeviceRepository;
+public class ModDateHeaderUtil {
 
-/**
- * Utility class to localize the modification date header-related logic.
- */
-public final class ModDateHeaderUtil {
+    private static final Logger logger = LoggerFactory.getLogger(ModDateHeaderUtil.class);
 
-	private static Log log = LogFactory.getLog(ModDateHeaderUtil.class);
+    private static final int ONE_DAY_IN_SECONDS = 86400;
+    private static final int ONE_WEEK_IN_SECONDS = 604800;
+    private static final int ONE_MONTH_IN_SECONDS = 2629800;
 
-	/**
-	 * Instantiates a new mod date header util.
-	 */
-	private ModDateHeaderUtil() {
-	}
+    private enum TimePeriod {
+        DAY(ONE_DAY_IN_SECONDS),
+        WEEK(ONE_WEEK_IN_SECONDS),
+        MONTH(ONE_MONTH_IN_SECONDS);
 
-	/**
-	 * Sets the HTTP response status to 304 (NOT MODIFIED) if the request
-	 * contains an If-Modified-Since header that specifies a time that is at or
-	 * after the time specified by the value of lastModifiedTimeMillis
-	 * <em>truncated to second granularity</em>. Returns true if the response
-	 * status was set, false if not.
-	 * 
-	 * @param request
-	 *            the request
-	 * @param response
-	 *            the response
-	 * @param lastModifiedTimeMillis
-	 *            the last modified time millis
-	 * @param deviceType
-	 *            the device type. Null to ignore ie no theme device type
-	 *            swithing check.
-	 * 
-	 * @return true if a response status was sent, false otherwise.
-	 */
-	public static boolean respondIfNotModified(HttpServletRequest request,
-			HttpServletResponse response, long lastModifiedTimeMillis,
-			MobileDeviceRepository.DeviceType deviceType) {
+        private final int seconds;
 
-		long sinceDate;
-		try {
-			sinceDate = request.getDateHeader("If-Modified-Since");
-		} catch (IllegalArgumentException ex) {
-			// this indicates there was some problem parsing the header value as
-			// a date
-			return false;
-		}
+        TimePeriod(int seconds) {
+            this.seconds = seconds;
+        }
 
-		// truncate to seconds
-		lastModifiedTimeMillis -= (lastModifiedTimeMillis % RollerConstants.SEC_IN_MS);
+        public int getSeconds() {
+            return seconds;
+        }
+    }
 
-		if (log.isDebugEnabled()) {
-			SimpleDateFormat dateFormat = new SimpleDateFormat(
-					"EEE MMM dd 'at' h:mm:ss a");
-			log.debug("since date = "
-					+ DateUtil.format(new Date(sinceDate), dateFormat));
-			log.debug("last mod date (trucated to seconds) = "
-					+ DateUtil.format(new Date(lastModifiedTimeMillis),
-							dateFormat));
-		}
+    public static void addModDateHeader(Map<String, String> headers, Instant modDate) {
+        if (modDate != null) {
+            headers.put(RollerConstants.MOD_DATE_HEADER, DateTimeFormatter.RFC_1123_DATE_TIME.format(modDate.atZone(ZoneId.of(DateUtil.TZ_GMT))));
+        }
+    }
 
-		// Set device type for device switching
-		String eTag = null;
-		if (deviceType != null) {
-			// int code = new HashCodeBuilder().append(deviceType.name())
-			// .hashCode();
-			// eTag = String.valueOf(code);
-			eTag = deviceType.name();
-		}
+    public static void addMaxAgeHeader(Map<String, String> headers, TimePeriod timePeriod) {
+        headers.put(RollerConstants.MAX_AGE_HEADER, String.valueOf(timePeriod.getSeconds()));
+    }
 
-		String previousToken = request.getHeader("If-None-Match");
-		if (eTag != null && previousToken != null && eTag.equals(previousToken)
-				&& lastModifiedTimeMillis <= sinceDate
-				|| (eTag == null || previousToken == null)
-				&& lastModifiedTimeMillis <= sinceDate) {
+    public static void addMaxAgeHeader(Map<String, String> headers, int maxAge) {
+        headers.put(RollerConstants.MAX_AGE_HEADER, String.valueOf(maxAge));
+    }
 
-			if (log.isDebugEnabled()) {
-				log.debug("NOT MODIFIED " + request.getRequestURL());
+    public static Instant getModDate(Map<String, String> headers) {
+        String modDateHeader = headers.get(RollerConstants.MOD_DATE_HEADER);
+        if (modDateHeader != null) {
+            try {
+                DateTimeFormatter formatter = DateTimeFormatter.RFC_1123_DATE_TIME;
+                return Instant.from(formatter.parse(modDateHeader));
+            } catch (Exception e) {
+                logger.error("Error parsing mod date header", e);
             }
+        }
+        return null;
+    }
 
-			response.setStatus(HttpServletResponse.SC_NOT_MODIFIED);
+    public static Map<String, Object> getCacheControlHeaders(String url) {
+        Map<String, Object> cacheControlHeaders = new HashMap<>();
 
-			// use the same date we sent when we created the ETag the
-			// first time through
-			response.setHeader("Last-Modified",
-					request.getHeader("If-Modified-Since"));
+        // Cache settings for different types of URLs
+        if (url.contains(WebloggerConfig.get("editor.url"))) {
+            cacheControlHeaders.put(RollerConstants.CACHE_CONTROL_HEADER, RollerConstants.NO_CACHE);
+        } else if (url.contains(WebloggerConfig.get("reader.url"))) {
+            cacheControlHeaders.put(RollerConstants.CACHE_CONTROL_HEADER, RollerConstants.MAX_AGE_3600);
+        } else {
+            cacheControlHeaders.put(RollerConstants.CACHE_CONTROL_HEADER, RollerConstants.MAX_AGE_86400);
+        }
 
-			return true;
-		} else {
-			return false;
-		}
-	}
-
-	/**
-	 * Set the Last-Modified header using the given time in milliseconds. Note
-	 * that because the header has the granularity of one second, the value will
-	 * get truncated to the nearest second that does not exceed the provided
-	 * value.
-	 * <p/>
-	 * This will also set the Expires header to a date in the past. This forces
-	 * clients to revalidate the cache each time.
-	 * 
-	 * @param response
-	 *            the response
-	 * @param lastModifiedTimeMillis
-	 *            the last modified time millis
-	 * @param deviceType
-	 *            the device type. Null to ignore ie no theme device type
-	 *            swithing check.
-	 */
-	public static void setLastModifiedHeader(HttpServletResponse response,
-			long lastModifiedTimeMillis,
-			MobileDeviceRepository.DeviceType deviceType) {
-
-		// Save our device type for device switching. Must use chaching on
-		// headers for this to work.
-		if (deviceType != null) {
-
-			// int code = new HashCodeBuilder().append(deviceType.name())
-			// .hashCode();
-			// String eTag = String.valueOf(code);
-
-			String eTag = deviceType.name();
-
-			response.setHeader("ETag", eTag);
-		}
-
-		response.setDateHeader("Last-Modified", lastModifiedTimeMillis);
-		// Force clients to revalidate each time
-		// See RFC 2616 (HTTP 1.1 spec) secs 14.21, 13.2.1
-		response.setDateHeader("Expires", 0);
-		// We may also want this (See 13.2.1 and 14.9.4)
-		// response.setHeader("Cache-Control","must-revalidate");
-
-	}
-
+        return cacheControlHeaders;
+    }
 }

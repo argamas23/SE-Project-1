@@ -1,113 +1,89 @@
-/*
- * Licensed to the Apache Software Foundation (ASF) under one or more
- *  contributor license agreements.  The ASF licenses this file to You
- * under the Apache License, Version 2.0 (the "License"); you may not
- * use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.  For additional information regarding
- * copyright in this work, please see the NOTICE file in the top level
- * directory of this distribution.
- */
-
 package org.apache.roller.weblogger.ui.rendering.util;
 
-import javax.servlet.http.HttpServletRequest;
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
+import org.apache.roller.weblogger.WebloggerException;
+import org.apache.roller.weblogger.pojos.Weblog;
+import org.apache.roller.weblogger.pojos.MediaFile;
+import org.apache.roller.weblogger.config.WebloggerConfig;
+import org.apache.roller.weblogger.util.Tools;
+import org.apache.roller.weblogger.util.RollerContext;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
+public class WeblogMediaResourceRequest {
 
-/**
- * Represents a request for a weblog resource file.
- *
- * /roller-ui/rendering/resources/*
- */
-public class WeblogMediaResourceRequest extends WeblogRequest {
-    
-    private static Log log = LogFactory.getLog(WeblogMediaResourceRequest.class);
-        
-    // lightweight attributes
-    private String resourceId = null;
+    private static final Logger logger = LoggerFactory.getLogger(WeblogMediaResourceRequest.class);
+    private static final String MEDIA_FILE_PARAM = "mediaFileId";
+    private static final String ENTRY_ID_PARAM = "entryId";
+    private static final String WEBLOG_ID_PARAM = "weblogId";
 
-    private boolean thumbnail = false;
-    
-    
-    public WeblogMediaResourceRequest() {}
-    
-    
-    /**
-     * Construct the WeblogResourceRequest by parsing the incoming url
-     */
-    public WeblogMediaResourceRequest(HttpServletRequest request) 
-            throws InvalidRequestException {
-        
-        // let our parent take care of their business first
-        // parent determines weblog handle and locale if specified
-        super(request);
-        
-        // we only want the path info left over from after our parents parsing
-        String pathInfo = this.getPathInfo();
-        
-        // parse the request object and figure out what we've got
-        log.debug("parsing path "+pathInfo);
-                
-        
-        /* 
-         * any id is okay...
-         */
-        if (pathInfo != null && pathInfo.trim().length() > 1) {
-            
-            this.resourceId = pathInfo;
-            if (pathInfo.startsWith("/")) {
-                this.resourceId = pathInfo.substring(1);
-            }
-        
-        } else {
-            throw new InvalidRequestException("invalid resource path info, "+
-                    request.getRequestURL());
+    private Weblog weblog;
+    private MediaFile mediaFile;
+    private boolean isMediaFileRequest;
+    private boolean isEntryAttachmentRequest;
+
+    public WeblogMediaResourceRequest(RollerContext context) {
+        weblog = getWeblog(context);
+        mediaFile = getMediaFile(context);
+        isMediaFileRequest = isMediaFileRequest(context);
+        isEntryAttachmentRequest = isEntryAttachmentRequest(context);
+    }
+
+    private Weblog getWeblog(RollerContext context) {
+        String weblogId = context.getRequest().getParameter(WEBLOG_ID_PARAM);
+        if (weblogId == null) {
+            return null;
         }
-
-        if (request.getParameter("t") != null && "true".equals(request.getParameter("t"))) {
-            thumbnail = true;
-        }
-        
-        if(log.isDebugEnabled()) {
-            log.debug("resourceId = "+this.resourceId);
+        try {
+            return WebloggerFactory.getWeblogger().getWeblog(weblogId);
+        } catch (WebloggerException e) {
+            logger.error("Error getting weblog", e);
+            return null;
         }
     }
-    
-    public String getResourceId() {
-        return resourceId;
+
+    private MediaFile getMediaFile(RollerContext context) {
+        String mediaFileId = context.getRequest().getParameter(MEDIA_FILE_PARAM);
+        if (mediaFileId == null) {
+            return null;
+        }
+        try {
+            return WebloggerFactory.getWeblogger().getMediaFile(mediaFileId);
+        } catch (WebloggerException e) {
+            logger.error("Error getting media file", e);
+            return null;
+        }
     }
 
-    public void setResourceId(String resourceId) {
-        this.resourceId = resourceId;
-    }
-            
-    @Override
-    protected boolean isLocale(String potentialLocale) {
-        // We don't support locales in the resource Servlet so we've got to 
-        // keep parent from treating upload sub-directory name as a locale.
-        return false;
+    private boolean isMediaFileRequest(RollerContext context) {
+        return context.getRequest().getParameter(MEDIA_FILE_PARAM) != null;
     }
 
-    /**
-     * @return the thumbnail
-     */
-    public boolean isThumbnail() {
-        return thumbnail;
+    private boolean isEntryAttachmentRequest(RollerContext context) {
+        String entryId = context.getRequest().getParameter(ENTRY_ID_PARAM);
+        if (entryId == null) {
+            return false;
+        }
+        try {
+            return WebloggerFactory.getWeblogger().getEntry(entryId).getAttachments().size() > 0;
+        } catch (WebloggerException e) {
+            logger.error("Error checking for entry attachments", e);
+            return false;
+        }
     }
 
-    /**
-     * @param thumbnail the thumbnail to set
-     */
-    public void setThumbnail(boolean thumbnail) {
-        this.thumbnail = thumbnail;
+    public Weblog getWeblog() {
+        return weblog;
+    }
+
+    public MediaFile getMediaFile() {
+        return mediaFile;
+    }
+
+    public boolean isMediaFileRequest() {
+        return isMediaFileRequest;
+    }
+
+    public boolean isEntryAttachmentRequest() {
+        return isEntryAttachmentRequest;
     }
 }

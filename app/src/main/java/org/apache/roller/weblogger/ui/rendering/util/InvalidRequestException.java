@@ -1,38 +1,24 @@
-/*
- * Licensed to the Apache Software Foundation (ASF) under one or more
- *  contributor license agreements.  The ASF licenses this file to You
- * under the Apache License, Version 2.0 (the "License"); you may not
- * use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.  For additional information regarding
- * copyright in this work, please see the NOTICE file in the top level
- * directory of this distribution.
- */
-
 package org.apache.roller.weblogger.ui.rendering.util;
 
-import org.apache.roller.weblogger.WebloggerException;
-
-
 /**
- * An InvalidRequestException is thrown by the ParsedRequest class or any of
- * its subclasses when the request being parsed is invalid in any way.
+ * Exception thrown when an invalid request is made.
  */
-public class InvalidRequestException extends WebloggerException {
-    
-    public InvalidRequestException(String msg) {
-        super(msg);
+public class InvalidRequestException extends Exception {
+
+    private static final long serialVersionUID = 1L;
+
+    private String errorMessage;
+
+    public InvalidRequestException(String errorMessage) {
+        this.errorMessage = errorMessage;
     }
-    
-    public InvalidRequestException(String msg, Exception e) {
-        super(msg, e);
+
+    public String getErrorMessage() {
+        return errorMessage;
     }
-    
+
+    @Override
+    public String getMessage() {
+        return errorMessage;
+    }
 }

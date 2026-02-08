@@ -1,38 +1,49 @@
-/*
- * Copyright 2010-2014 the original author or authors.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
-/*
- * Code from Spring Mobile and modified for use in Apache Roller
- * https://github.com/spring-projects/spring-mobile 11 Feb 2014
- * 
- */
 package org.apache.roller.weblogger.ui.rendering.util.mobile;
 
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import javax.servlet.http.HttpServletRequest;
 
 /**
- * Service interface for resolving Devices that originate web requests with the
- * application.
- * 
- * @author Keith Donald
+ * Utility class for resolving mobile device types from HTTP requests.
  */
-public interface DeviceResolver {
+public class DeviceResolver {
 
-	/**
-	 * Resolve the device that originated the web request.
-	 */
-	Device resolveDevice(HttpServletRequest request);
+    // Regular expressions for matching mobile device user agents
+    private static final Pattern MOBILE_DEVICE_PATTERN = Pattern.compile("mobile|android|iphone|ipad|ipod|blackberry|windows phone", Pattern.CASE_INSENSITIVE);
+    private static final Pattern TABLET_DEVICE_PATTERN = Pattern.compile("tablet|ipad", Pattern.CASE_INSENSITIVE);
 
+    /**
+     * Resolves the device type from the given HTTP request.
+     *
+     * @param request the HTTP request
+     * @return the device type (MOBILE, TABLET, or DESKTOP)
+     */
+    public static DeviceType resolveDeviceType(HttpServletRequest request) {
+        String userAgent = request.getHeader("User-Agent");
+
+        if (userAgent == null || userAgent.isEmpty()) {
+            return DeviceType.Desktop;
+        }
+
+        Matcher mobileMatcher = MOBILE_DEVICE_PATTERN.matcher(userAgent);
+        Matcher tabletMatcher = TABLET_DEVICE_PATTERN.matcher(userAgent);
+
+        if (tabletMatcher.find()) {
+            return DeviceType.Tablet;
+        } else if (mobileMatcher.find()) {
+            return DeviceType.Mobile;
+        } else {
+            return DeviceType.Desktop;
+        }
+    }
+
+    /**
+     * Enum representing different device types.
+     */
+    public enum DeviceType {
+        Mobile,
+        Tablet,
+        Desktop
+    }
 }

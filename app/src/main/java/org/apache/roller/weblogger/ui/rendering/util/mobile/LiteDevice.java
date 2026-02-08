@@ -1,79 +1,57 @@
-/*
- * Copyright 2010-2014 the original author or authors.
- * 
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
-/*
- * Code from Spring Mobile and modified for use in Apache Roller
- * https://github.com/spring-projects/spring-mobile 11 Feb 2014
- * 
- */
 package org.apache.roller.weblogger.ui.rendering.util.mobile;
 
-/**
- * A lightweight Device implementation suitable for use as support code.
- * Typically used to hold the output of a device resolution invocation.
- * 
- * @author Keith Donald
- * @author Roy Clarkson
- * @author Scott Rossillo
- */
-class LiteDevice implements Device {
+public class Device {
 
-	public static final LiteDevice NORMAL_INSTANCE = new LiteDevice(
-			DeviceType.NORMAL);
+    private DeviceType deviceType;
+    private String userAgent;
+    private String accept;
 
-	public static final LiteDevice MOBILE_INSTANCE = new LiteDevice(
-			DeviceType.MOBILE);
+    public Device(String userAgent, String accept) {
+        this.userAgent = userAgent;
+        this.accept = accept;
+        this.deviceType = determineDeviceType();
+    }
 
-	public static final LiteDevice TABLET_INSTANCE = new LiteDevice(
-			DeviceType.TABLET);
+    private DeviceType determineDeviceType() {
+        if (isIphone()) {
+            return DeviceType.IPHONE;
+        } else if (isAndroid()) {
+            return DeviceType.ANDROID;
+        } else if (isWindowsPhone()) {
+            return DeviceType.WINDOWS_PHONE;
+        } else {
+            return DeviceType.UNKNOWN;
+        }
+    }
 
-    @Override
-	public boolean isNormal() {
-		return this.deviceType == DeviceType.NORMAL;
-	}
+    private boolean isIphone() {
+        return userAgent.contains("iPhone");
+    }
 
-    @Override
-	public boolean isMobile() {
-		return this.deviceType == DeviceType.MOBILE;
-	}
+    private boolean isAndroid() {
+        return userAgent.contains("Android");
+    }
 
-    @Override
-	public boolean isTablet() {
-		return this.deviceType == DeviceType.TABLET;
-	}
+    private boolean isWindowsPhone() {
+        return userAgent.contains("Windows Phone");
+    }
 
-	public DeviceType getDeviceType() {
-		return this.deviceType;
-	}
+    public DeviceType getDeviceType() {
+        return deviceType;
+    }
 
-    @Override
-	public String toString() {
-		StringBuilder builder = new StringBuilder();
-		builder.append("[LiteDevice ");
-		builder.append("type").append("=").append(this.deviceType);
-		builder.append("]");
-		return builder.toString();
-	}
+    public String getUserAgent() {
+        return userAgent;
+    }
 
-	private final DeviceType deviceType;
+    public String getAccept() {
+        return accept;
+    }
 
-	/**
-	 * Creates a LiteDevice.
-	 */
-	private LiteDevice(DeviceType deviceType) {
-		this.deviceType = deviceType;
-	}
-
+    public enum DeviceType {
+        IPHONE,
+        ANDROID,
+        WINDOWS_PHONE,
+        UNKNOWN
+    }
 }

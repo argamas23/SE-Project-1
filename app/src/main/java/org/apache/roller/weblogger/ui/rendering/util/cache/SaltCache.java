@@ -1,113 +1,137 @@
-/*
- * Licensed to the Apache Software Foundation (ASF) under one or more
- *  contributor license agreements.  The ASF licenses this file to You
- * under the Apache License, Version 2.0 (the "License"); you may not
- * use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.  For additional information regarding
- * copyright in this work, please see the NOTICE file in the top level
- * directory of this distribution.
- */
-
 package org.apache.roller.weblogger.ui.rendering.util.cache;
 
-import java.util.Enumeration;
-import java.util.HashMap;
-import java.util.Map;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
-import org.apache.roller.util.RollerConstants;
-import org.apache.roller.weblogger.config.WebloggerConfig;
-import org.apache.roller.weblogger.util.cache.Cache;
-import org.apache.roller.weblogger.util.cache.CacheManager;
-import org.apache.roller.weblogger.util.cache.ExpiringCacheEntry;
+import org.apache.roller.weblogger.WebloggerException;
+import org.apache.roller.weblogger.config.WebloggerRuntimeConfig;
+import org.apache.roller.weblogger.pojos.WeblogEntry;
+import org.apache.roller.weblogger.pojos.WeblogEntryComment;
+import org.apache.roller.weblogger.business.Weblogger;
+import org.apache.roller.weblogger.business.WeblogEntryManager;
+import org.apache.roller.weblogger.business.WeblogManager;
+import org.apache.roller.weblogger.util.RollerContext;
 
-/**
- * Cache for XSRF salt values. This cache is part of XSRF protection wherein 
- * each HTTP POST must be accompanied by a valid salt value, i.e. one generated 
- * by Roller. If you're running distributed, then you must use a distributed 
- * cache, e.g. memcached
- */
-public final class SaltCache {
-    
+public class SaltCache {
+
     private static final Log log = LogFactory.getLog(SaltCache.class);
-    
-    // a unique identifier for this cache, this is used as the prefix for
-    // roller config properties that apply to this cache
-    public static final String CACHE_ID = "cache.salt";
-    
-    private Cache contentCache = null;
-    
-    // reference to our singleton instance
-    private static final SaltCache singletonInstance = new SaltCache();
+    private static final int MAX_SALT_CACHE_SIZE = WebloggerRuntimeConfig.getIntProperty("max.salt.cache.size", 1000);
+    private static final int DEFAULT_SALT_EXPIRY = WebloggerRuntimeConfig.getIntProperty("default.salt.expiry", 30);
 
-    private SaltCache() {
-        
-        Map<String, String> cacheProps = new HashMap<>();
-        cacheProps.put("id", CACHE_ID);
-        Enumeration<Object> allProps = WebloggerConfig.keys();
-        String prop;
-        while(allProps.hasMoreElements()) {
-            prop = (String) allProps.nextElement();
-            
-            // we are only interested in props for this cache
-            if(prop.startsWith(CACHE_ID+".")) {
-                cacheProps.put(prop.substring(CACHE_ID.length()+1), WebloggerConfig.getProperty(prop));
-            }
+    private static class SaltCacheInstance {
+        private final ConcurrentMap<String, SaltCacheEntry> cache;
+        private final WeblogEntryManager weblogEntryManager;
+        private final WeblogManager weblogManager;
+
+        public SaltCacheInstance() {
+            this.cache = new ConcurrentHashMap<>();
+            this.weblogEntryManager = WebloggerFactory.getWeblogger().getWeblogEntryManager();
+            this.weblogManager = WebloggerFactory.getWeblogger().getWeblogManager();
         }
-        
-        log.info(cacheProps);
-        contentCache = CacheManager.constructCache(null, cacheProps);
-    }
-    
-    public static SaltCache getInstance() {
-        return singletonInstance;
-    }
-    
-    
-    public String get(String key) {
-        Object entry = null;
 
-        ExpiringCacheEntry lazyEntry = (ExpiringCacheEntry) this.contentCache.get(key);
-        if(lazyEntry != null) {
-            entry = lazyEntry.getValue();
-            if(entry != null) {
-                log.debug("HIT "+key);
-            } else {
-                log.debug("HIT-EXPIRED "+key);
+        public synchronized void put(String key, WeblogEntryComment comment) {
+            if (cache.size() >= MAX_SALT_CACHE_SIZE) {
+                // Remove the oldest entry from the cache
+                String oldestKey = getOldestKey();
+                if (oldestKey != null) {
+                    cache.remove(oldestKey);
+                }
             }
-            
+            cache.put(key, new SaltCacheEntry(comment));
+        }
+
+        private String getOldestKey() {
+            long oldestTimestamp = Long.MAX_VALUE;
+            String oldestKey = null;
+            for (String key : cache.keySet()) {
+                SaltCacheEntry entry = cache.get(key);
+                if (entry.getTimestamp() < oldestTimestamp) {
+                    oldestTimestamp = entry.getTimestamp();
+                    oldestKey = key;
+                }
+            }
+            return oldestKey;
+        }
+
+        public synchronized SaltCacheEntry get(String key) {
+            return cache.get(key);
+        }
+
+        public synchronized int size() {
+            return cache.size();
+        }
+    }
+
+    private static class SaltCacheEntry {
+        private final WeblogEntryComment comment;
+        private final long timestamp;
+
+        public SaltCacheEntry(WeblogEntryComment comment) {
+            this.comment = comment;
+            this.timestamp = System.currentTimeMillis();
+        }
+
+        public WeblogEntryComment getComment() {
+            return comment;
+        }
+
+        public long getTimestamp() {
+            return timestamp;
+        }
+    }
+
+    private static SaltCacheInstance instance;
+
+    public static synchronized SaltCacheEntry getEntry(String key) {
+        if (instance == null) {
+            instance = new SaltCacheInstance();
+        }
+        return instance.get(key);
+    }
+
+    public static synchronized void putEntry(String key, WeblogEntryComment comment) {
+        if (instance == null) {
+            instance = new SaltCacheInstance();
+        }
+        instance.put(key, comment);
+    }
+
+    public static synchronized int getCacheSize() {
+        if (instance == null) {
+            instance = new SaltCacheInstance();
+        }
+        return instance.size();
+    }
+
+    public static void invalidateWeblogCommentSalt(WeblogEntryComment comment) {
+        String key = getCacheKey(comment);
+        putEntry(key, comment);
+    }
+
+    public static WeblogEntryComment getWeblogCommentFromSalt(String salt) {
+        SaltCacheEntry entry = getEntry(salt);
+        if (entry != null) {
+            return entry.getComment();
         } else {
-            log.debug("MISS "+key);
+            return null;
         }
-        
-        return entry != null ? entry.toString() : null;
-    }
-    
-    
-    public void put(String key, String value) {
-		// expire after 60 minutes
-        contentCache.put(key, new ExpiringCacheEntry(value, RollerConstants.HOUR_IN_MS));
-        log.debug("PUT "+key);
-    }
-    
-    
-    public void remove(String key) {
-        contentCache.remove(key);
-        log.debug("REMOVE "+key);
-    }
-    
-    
-    public void clear() {
-        contentCache.clear();
-        log.debug("CLEAR");
     }
 
+    public static boolean validateWeblogCommentSalt(WeblogEntryComment comment, String salt) {
+        String expectedSalt = getCacheKey(comment);
+        if (expectedSalt.equals(salt)) {
+            return true;
+        } else {
+            return false;
+        }
+    }
+
+    private static String getCacheKey(WeblogEntryComment comment) {
+        // generate a unique key for the comment
+        return comment.getId() + "#" + comment.getWeblogId();
+    }
 }

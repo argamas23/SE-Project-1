@@ -1,123 +1,190 @@
-/*
- * Licensed to the Apache Software Foundation (ASF) under one or more
- *  contributor license agreements.  The ASF licenses this file to You
- * under the Apache License, Version 2.0 (the "License"); you may not
- * use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.  For additional information regarding
- * copyright in this work, please see the NOTICE file in the top level
- * directory of this distribution.
- */
-
 package org.apache.roller.weblogger.ui.rendering.util;
 
-import javax.servlet.http.HttpServletRequest;
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
 import org.apache.roller.weblogger.WebloggerException;
-import org.apache.roller.weblogger.business.WebloggerFactory;
-import org.apache.roller.weblogger.business.UserManager;
+import org.apache.roller.weblogger.config.WebloggerRuntimeConfig;
+import org.apache.roller.weblogger.pojos.WeblogEntry;
+import org.apache.roller.weblogger.pojos.WeblogEntryCategory;
+import org.apache.roller.weblogger.pojos.WeblogEntryComment;
 import org.apache.roller.weblogger.pojos.User;
-import org.apache.roller.weblogger.ui.rendering.mobile.MobileDeviceRepository;
+import org.apache.roller.weblogger.business.Weblogger;
+import org.apache.roller.weblogger.business.WeblogEntryManager;
+import org.apache.roller.weblogger.business.WeblogManager;
+import org.apache.roller.weblogger.business.UserManager;
+import org.apache.roller.weblogger.util.RollerContext;
+import org.apache.roller.weblogger.util.StringUtils;
 
+public class ParsedRequest {
 
-/**
- * An abstract class representing any request made to Roller that has been
- * parsed in order to extract relevant pieces of information from the url.
- *
- * NOTE: It is extremely important to mention that this class and all of its
- * subclasses are meant to be extremely light weight.  Meaning they should
- * avoid any time consuming operations at all costs, especially operations
- * which require a trip to the db.  Those operations should be used very, very
- * sparingly and should only be triggered when it's guaranteed that they are
- * needed.
- */
-public abstract class ParsedRequest {
-    
-    private static Log log = LogFactory.getLog(ParsedRequest.class);
-    
-    HttpServletRequest request = null;
-    
-    // lightweight attributes
-    private String authenticUser = null;
+    private String weblogHandle;
+    private String category;
+    private String entryId;
+    private String page;
+    private String date;
+    private String tag;
+    private String username;
+    private boolean isAdminRequest;
+    private RollerContext context;
 
-    private MobileDeviceRepository.DeviceType deviceType = 
-			MobileDeviceRepository.DeviceType.standard;
-    
-    // heavyweight attributes
-    private User user = null;
-    
-    
-    ParsedRequest() {}
-    
-    
-    /**
-     * Parse the given http request and extract any information we can.
-     *
-     * This abstract version of the constructor gathers info likely to be
-     * relevant to all requests to Roller.
-     */
-    public ParsedRequest(HttpServletRequest request) throws InvalidRequestException {
-        
-        // keep a reference to the original request
-        this.request = request;
-        
-        // login status
-        java.security.Principal prince = request.getUserPrincipal();
-        if(prince != null) {
-            this.authenticUser = prince.getName();
+    public ParsedRequest(RollerContext context) {
+        this.context = context;
+        parseRequest();
+    }
+
+    private void parseRequest() {
+        String requestURI = context.getRequest().getRequestURI();
+        Pattern pattern = Pattern.compile("/(weblog)/(\\w+)(?:/(\\w+))?(?:/(\\w+))?(?:/(\\w+))?.*");
+        Matcher matcher = pattern.matcher(requestURI);
+
+        if (matcher.matches()) {
+            weblogHandle = matcher.group(2);
+            category = matcher.group(3);
+            entryId = matcher.group(4);
+            page = matcher.group(5);
+        } else {
+            throw new WebloggerException("Invalid request URI");
         }
-        // set the detected type of the request
-        deviceType = MobileDeviceRepository.getRequestType(request);
     }
-    
-    
-    public String getAuthenticUser() {
-        return this.authenticUser;
-    }
-    
-    
-    public void setAuthenticUser(String authenticUser) {
-        this.authenticUser = authenticUser;
-    }
-    
-    
-    public User getUser() {
-        
-        if(user == null && authenticUser != null) {
-            try {
-                UserManager umgr = WebloggerFactory.getWeblogger().getUserManager();
-                user = umgr.getUserByUserName(authenticUser);
-            } catch (WebloggerException ex) {
-                log.error("Error looking up user "+authenticUser, ex);
+
+    private void extractDateFromRequest() {
+        if (StringUtils.isEmpty(date)) {
+            String[] parts = context.getRequest().getRequestURI().split("/");
+            if (parts.length > 4 && parts[4].matches("\\d{4}-\\d{2}-\\d{2}")) {
+                date = parts[4];
             }
         }
-        
-        return user;
-    }
-    
-    
-    public void setUser(User u) {
-        this.user = u;
-    }
-    
-    
-    public boolean isLoggedIn() {
-        return (this.authenticUser != null);
     }
 
-    public MobileDeviceRepository.DeviceType getDeviceType() {
-        return deviceType;
+    private void extractTagFromRequest() {
+        if (StringUtils.isEmpty(tag)) {
+            String[] parts = context.getRequest().getRequestURI().split("/");
+            if (parts.length > 4 && parts[4].startsWith("tag")) {
+                tag = parts[4].substring(4);
+            }
+        }
     }
 
-    public void setDeviceType(MobileDeviceRepository.DeviceType type) {
-        this.deviceType = type;
+    private void extractUsernameFromRequest() {
+        if (StringUtils.isEmpty(username)) {
+            String[] parts = context.getRequest().getRequestURI().split("/");
+            if (parts.length > 4 && parts[4].startsWith("user")) {
+                username = parts[4].substring(5);
+            }
+        }
+    }
+
+    public String getWeblogHandle() {
+        return weblogHandle;
+    }
+
+    public String getCategory() {
+        return category;
+    }
+
+    public String getEntryId() {
+        return entryId;
+    }
+
+    public String getPage() {
+        return page;
+    }
+
+    public String getDate() {
+        if (StringUtils.isEmpty(date)) {
+            extractDateFromRequest();
+        }
+        return date;
+    }
+
+    public String getTag() {
+        if (StringUtils.isEmpty(tag)) {
+            extractTagFromRequest();
+        }
+        return tag;
+    }
+
+    public String getUsername() {
+        if (StringUtils.isEmpty(username)) {
+            extractUsernameFromRequest();
+        }
+        return username;
+    }
+
+    public boolean isAdminRequest() {
+        return isAdminRequest;
+    }
+
+    private void setAdminRequest(User user) {
+        WeblogManager weblogManager = WebloggerFactory.getWeblogManager();
+        isAdminRequest = weblogManager.isSystemAdmin(user) || weblogManager.isUserWeblogAdmin(user, weblogHandle);
+    }
+
+    public List<WeblogEntryCategory> getCategories() {
+        WeblogManager weblogManager = WebloggerFactory.getWeblogManager();
+        return weblogManager.getCategories(weblogHandle);
+    }
+
+    public List<WeblogEntryComment> getComments() {
+        WeblogEntryManager entryManager = WebloggerFactory.getWeblogEntryManager();
+        return entryManager.getComments(entryId);
+    }
+
+    public WeblogEntry getEntry() {
+        WeblogEntryManager entryManager = WebloggerFactory.getWeblogEntryManager();
+        return entryManager.getWeblogEntry(entryId);
+    }
+
+    public List<WeblogEntry> getRecentEntries() {
+        WeblogEntryManager entryManager = WebloggerFactory.getWeblogEntryManager();
+        return entryManager.getRecentWeblogEntries(weblogHandle);
+    }
+
+    public List<WeblogEntry> getEntriesByCategory() {
+        WeblogEntryManager entryManager = WebloggerFactory.getWeblogEntryManager();
+        return entryManager.getWeblogEntriesByCategory(weblogHandle, category);
+    }
+
+    public List<WeblogEntry> getEntriesByDate() {
+        WeblogEntryManager entryManager = WebloggerFactory.getWeblogEntryManager();
+        return entryManager.getWeblogEntriesByDate(weblogHandle, getDate());
+    }
+
+    public List<WeblogEntry> getEntriesByTag() {
+        WeblogEntryManager entryManager = WebloggerFactory.getWeblogEntryManager();
+        return entryManager.getWeblogEntriesByTag(weblogHandle, getTag());
+    }
+
+    public User getUser() {
+        UserManager userManager = WebloggerFactory.getUserManager();
+        return userManager.getUser(getUsername());
+    }
+
+    public Map<String, Object> getTemplateModel() {
+        Map<String, Object> model = new HashMap<>();
+        model.put("weblog", getWeblog());
+        model.put("entries", getRecentEntries());
+        model.put("categories", getCategories());
+        model.put("entry", getEntry());
+        model.put("comments", getComments());
+        model.put("user", getUser());
+        return model;
+    }
+
+    private Object getWeblog() {
+        WeblogManager weblogManager = WebloggerFactory.getWeblogManager();
+        return weblogManager.getWeblog(weblogHandle);
+    }
+
+    public void initializeUser() {
+        User user = context.getRequest().getRemoteUser();
+        if (user != null && !isAdminRequest) {
+            setAdminRequest(user);
+        }
     }
 }
