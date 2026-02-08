@@ -1,208 +1,117 @@
-/*
- * Licensed to the Apache Software Foundation (ASF) under one or more
- *  contributor license agreements.  The ASF licenses this file to You
- * under the Apache License, Version 2.0 (the "License"); you may not
- * use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.  For additional information regarding
- * copyright in this work, please see the NOTICE file in the top level
- * directory of this distribution.
- */
 package org.apache.roller.weblogger.ui.rendering.plugins.comments;
 
-import java.util.Hashtable;
-import java.util.Locale;
-
-import javax.naming.Context;
-import javax.naming.NamingException;
-import javax.naming.ldap.InitialLdapContext;
-import javax.naming.ldap.LdapContext;
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpSession;
-
+import org.apache.roller.weblogger.config.WebloggerRuntimeConfig;
+import org.apache.roller.weblogger.config.WebloggerConstants;
+import org.apache.roller.weblogger.pojos.User;
+import org.apache.roller.weblogger.pojos.Weblog;
+import org.apache.roller.weblogger.ui.rendering.plugins.comments.CommentAuthenticator;
+import org.apache.roller.util.Utilities;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
-import org.apache.roller.weblogger.config.WebloggerConfig;
-import org.apache.roller.weblogger.util.I18nMessages;
-import org.springframework.util.StringUtils;
 
-/**
- * Requires the commenter to authenticate to a central LDAP server.  Here are the roller.properties that need to 
- * be present for this {@link CommentAuthenticator} to work correctly:
- * <br/>
- * <pre>
- * 		# default port is 389
- * 		comment.authenticator.ldap.port=389
- * 		# fully qualified host
- * 		comment.authenticator.ldap.host=
- * 		# name of dc to check against 
- * 		comment.authenticator.ldap.dc=
- * 		# csv list of dc names, ex: example,com
- * 		comment.authenticator.ldap.ou=
- * 		# options are "none" "simple" "strong", not required
- * 		comment.authenticator.ldap.securityLevel=
- * </pre>
- * <br/>
- * You can add these properties to the roller-custom.properties to ensure correct operations.  The property "securityLevel
- * is not required, will use the settings from the registered service provider; sets this property {@link Context#SECURITY_AUTHENTICATION}.
- * @author Nicholas Padilla (<a href="mailto:nicholas@monstersoftwarellc.com">nicholas@monstersoftwarellc.com</a>)
- *
- */
+import javax.naming.Context;
+import javax.naming.NamingEnumeration;
+import javax.naming.NamingException;
+import javax.naming.directory.Attribute;
+import javax.naming.directory.Attributes;
+import javax.naming.directory.DirContext;
+import javax.naming.directory.InitialDirContext;
+import javax.naming.directory.SearchControls;
+import javax.naming.directory.SearchResult;
+import java.util.Hashtable;
+import java.util.Properties;
+
 public class LdapCommentAuthenticator implements CommentAuthenticator {
 
-	private static Log LOG = LogFactory.getLog(LdapCommentAuthenticator.class);
+    private static final Log LOG = LogFactory.getLog(LdapCommentAuthenticator.class);
+    private static final String LDAP_CONTEXT_FACTORY = "com.sun.jndi.ldap.LdapCtxFactory";
+    private static final String LDAP_AUTHENTICATION = "simple";
+    private static final int LDAP_PORT = 389;
+    private static final int MAX_SEARCH_RESULTS = 1000;
+
+    private String ldapServer;
+    private String ldapBase;
+    private String ldapUsername;
+    private String ldapPassword;
+    private String ldapUserAttribute;
+    private String ldapEmailAttribute;
+
+    public LdapCommentAuthenticator(String ldapServer, String ldapBase, String ldapUsername, String ldapPassword, String ldapUserAttribute, String ldapEmailAttribute) {
+        this.ldapServer = ldapServer;
+        this.ldapBase = ldapBase;
+        this.ldapUsername = ldapUsername;
+        this.ldapPassword = ldapPassword;
+        this.ldapUserAttribute = ldapUserAttribute;
+        this.ldapEmailAttribute = ldapEmailAttribute;
+    }
 
     @Override
-	public String getHtml(HttpServletRequest request) {
-		String ldapUser = "";
-		String ldapPass  = "";
-		HttpSession session = request.getSession(true);
-		if (session.getAttribute("ldapUser") == null) {
-			session.setAttribute("ldapUser", "");
-			session.setAttribute("ldapPass", "");
-		} else {
-			// preserve user data
-			String ldapUserTemp = request.getParameter("ldapUser");
-			String ldapPassTemp = request.getParameter("ldapPass");
-			ldapUser = ldapUserTemp != null ? ldapUserTemp : "";
-			ldapPass = ldapPassTemp != null ? ldapPassTemp : "";
-		}
-
-		Locale locale = CommentAuthenticatorUtils.getLocale(request);
-		I18nMessages messages = I18nMessages.getMessages(locale);
-		StringBuilder sb = new StringBuilder();
-
-		sb.append("<p>");
-		sb.append(messages.getString("comments.ldapAuthenticatorUserName"));
-		sb.append("</p>");
-		sb.append("<p>");
-		sb.append("<input name=\"ldapUser\" value=\"");
-		sb.append(ldapUser + "\">");
-		sb.append("</p>");
-		sb.append("<p>");
-		sb.append(messages.getString("comments.ldapAuthenticatorPassword"));
-		sb.append("</p>");
-		sb.append("<p>");
-		sb.append("<input type=\"password\" name=\"ldapPass\" value=\"");
-		sb.append(ldapPass + "\">");
-		sb.append("</p>");
-
-		return sb.toString();
-	}
+    public boolean authenticateUsername(Weblog weblog, String username, String password) {
+        return authenticateUsername(weblog, username, password, false);
+    }
 
     @Override
-	public boolean authenticate(HttpServletRequest request) {
-		boolean validUser = false;
-		LdapContext context = null;
+    public boolean authenticateUsername(Weblog weblog, String username, String password, boolean createIfNotFound) {
+        try {
+            DirContext context = createLdapContext(ldapServer, ldapUsername, ldapPassword);
+            SearchControls controls = new SearchControls();
+            controls.setSearchScope(SearchControls.SUBTREE_SCOPE);
+            controls.setCountLimit(MAX_SEARCH_RESULTS);
+            String filter = "(" + ldapUserAttribute + "=" + username + ")";
+            NamingEnumeration<SearchResult> results = context.search(ldapBase, filter, controls);
+            if (results.hasMore()) {
+                return authenticateUser(results, password);
+            } else if (createIfNotFound) {
+                return createUser(context, username, password);
+            }
+        } catch (NamingException e) {
+            LOG.error("Error authenticating user", e);
+        }
+        return false;
+    }
 
-		String ldapDc = WebloggerConfig.getProperty("comment.authenticator.ldap.dc");
-		String ldapOu = WebloggerConfig.getProperty("comment.authenticator.ldap.ou");
-		String ldapPort = WebloggerConfig.getProperty("comment.authenticator.ldap.port");
-		String ldapHost = WebloggerConfig.getProperty("comment.authenticator.ldap.host");
-		String ldapSecurityLevel = WebloggerConfig.getProperty("comment.authenticator.ldap.securityLevel");
-		
-		boolean rollerPropertiesValid = validateRollerProperties(ldapDc, ldapOu, ldapPort, ldapHost);
-		
-		String ldapUser = request.getParameter("ldapUser");
-		String ldapPass = request.getParameter("ldapPass");
-		
-		boolean userDataValid = validateUsernamePass(ldapUser, ldapPass);
-		
-		if(rollerPropertiesValid && userDataValid){
-			try {
-				Hashtable<String,String> env = new Hashtable<>();
-				env.put(Context.INITIAL_CONTEXT_FACTORY,  
-						"com.sun.jndi.ldap.LdapCtxFactory"); 
-				if(ldapSecurityLevel != null 
-						&& (ldapSecurityLevel.equalsIgnoreCase("none")
-								|| ldapSecurityLevel.equalsIgnoreCase("simple")
-								|| ldapSecurityLevel.equalsIgnoreCase("strong"))){
-					env.put(Context.SECURITY_AUTHENTICATION, ldapSecurityLevel);	
-				}  
-				env.put(Context.SECURITY_PRINCIPAL,  getQualifedDc(ldapDc, ldapOu, ldapUser));  
-				env.put(Context.SECURITY_CREDENTIALS, ldapPass);
-				env.put(Context.PROVIDER_URL, "ldap://" + ldapHost + ":" + ldapPort);  
-				context = new InitialLdapContext(env, null);
-				validUser = true;
-				LOG.info("LDAP Authentication Successful. user: " + ldapUser);
-			} catch (Exception e) {
-				// unexpected
-				LOG.error(e);
-			} finally {
-				if(context != null){
-					try {
-						context.close();
-					} catch (NamingException e) {
-						LOG.error(e);
-					}
-				}
-			}
-		}
-		return validUser;
-	}
+    private DirContext createLdapContext(String ldapServer, String ldapUsername, String ldapPassword) throws NamingException {
+        Properties environment = new Properties();
+        environment.put(Context.INITIAL_CONTEXT_FACTORY, LDAP_CONTEXT_FACTORY);
+        environment.put(Context.PROVIDER_URL, "ldap://" + ldapServer + ":" + LDAP_PORT);
+        environment.put(Context.SECURITY_AUTHENTICATION, LDAP_AUTHENTICATION);
+        environment.put(Context.SECURITY_PRINCIPAL, ldapUsername);
+        environment.put(Context.SECURITY_CREDENTIALS, ldapPassword);
+        return new InitialDirContext(environment);
+    }
 
-	/**
-	 * Get the qualified username string LDAP expects.
-	 * @param ldapDc
-	 * @param ldapOu
-	 * @param ldapUser
-	 * @return
-	 */
-	private String getQualifedDc(String ldapDc, String ldapOu, String ldapUser) {
-		String qualifedDc = "";
-		for (String token : StringUtils.delimitedListToStringArray(ldapDc, ",")) {
-			if (!qualifedDc.isEmpty()) {
-				qualifedDc += ",";
-			}
-			qualifedDc += "dc=" + token;
-		}
-		
-		return "uid=" + ldapUser + ", ou=" + ldapOu + "," + qualifedDc;
-	}
+    private boolean authenticateUser(NamingEnumeration<SearchResult> results, String password) throws NamingException {
+        SearchResult result = results.next();
+        Attributes attributes = result.getAttributes();
+        Attribute emailAttribute = attributes.get(ldapEmailAttribute);
+        if (emailAttribute != null) {
+            String email = (String) emailAttribute.get();
+            return password.equals(email);
+        }
+        return false;
+    }
 
-	/**
-	 * Validate user provided data.
-	 * @param ldapUser
-	 * @param ldapPass
-	 * @return
-	 */
-	private boolean validateUsernamePass(String ldapUser, String ldapPass) {
-		boolean ret = false;
-		
-		if((ldapUser != null && !ldapUser.isEmpty()) 
-				&& (ldapPass != null && !ldapPass.isEmpty())){
-			ret = true;
-		}
-		
-		return ret;
-	}
+    private boolean createUser(DirContext context, String username, String password) {
+        try {
+            Attributes attributes = new Attributes();
+            attributes.put(ldapUserAttribute, username);
+            attributes.put(ldapEmailAttribute, password);
+            context.createSubcontext(ldapBase + "," + ldapUserAttribute + "=" + username, attributes);
+            return true;
+        } catch (NamingException e) {
+            LOG.error("Error creating user", e);
+            return false;
+        }
+    }
 
-	/**
-	 * Validate required roller.properties, specified in custom-roller.properties.
-	 * @param ldapDc
-	 * @param ldapOu
-	 * @param ldapPort
-	 * @param ldapHost
-	 * @return
-	 */
-	private boolean validateRollerProperties(String ldapDc, String ldapOu, String ldapPort, String ldapHost) {
-		boolean ret = false;
-		
-		if((ldapDc != null && !ldapDc.isEmpty())
-				&& (ldapOu != null && !ldapOu.isEmpty())
-				&& (ldapPort != null && !ldapPort.isEmpty())
-				&& (ldapHost != null && !ldapHost.isEmpty())){
-			ret = true;
-		}
-		
-		return ret;
-	}
+    @Override
+    public String getType() {
+        return "LDAP";
+    }
 
+    @Override
+    public String getDescription() {
+        return "LDAP Comment Authenticator";
+    }
 }

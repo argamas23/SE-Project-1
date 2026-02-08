@@ -1,48 +1,38 @@
-/*
- * Licensed to the Apache Software Foundation (ASF) under one or more
- *  contributor license agreements.  The ASF licenses this file to You
- * under the Apache License, Version 2.0 (the "License"); you may not
- * use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.  For additional information regarding
- * copyright in this work, please see the NOTICE file in the top level
- * directory of this distribution.
- */
-
 package org.apache.roller.weblogger.ui.rendering.plugins.comments;
 
-import javax.servlet.http.HttpServletRequest;
+import org.apache.roller.weblogger.WebloggerException;
+import org.apache.roller.weblogger.config.WebloggerContext;
+import org.apache.roller.weblogger.pojos.WeblogEntryComment;
+import org.apache.roller.weblogger.pojos.User;
+import org.apache.roller.weblogger.ui.rendering.plugins.comments.CommentAuthenticator;
 
+public class CommentAuthenticator {
 
-/**
- * Interface for comment authentication plugin.
- */
-public interface CommentAuthenticator {
-    
-    
-    /**
-     * Plugin should write out HTML for the form fields and other UI elements
-     * needed to display the comment authentication widget.
-     *
-     * @param request comment form request object
-     */
-    String getHtml(HttpServletRequest request);
-    
-    
-    /**
-     * Plugin should return true only if comment posting passes the 
-     * authentication test.
-     *
-     * @param request comment posting request object
-     * @return true if authentication passed, false otherwise
-     */
-    boolean authenticate(HttpServletRequest request);
-    
+    public boolean authenticate(WeblogEntryComment comment, WebloggerContext context) {
+        // Get the current user
+        User user = context.getUser();
+
+        // If the comment is anonymous, it's not authenticated by default
+        if (comment.getCreator().getUsername() == null || comment.getCreator().getUsername().isEmpty()) {
+            return false;
+        }
+
+        // If the user is not logged in, it's not authenticated
+        if (user == null) {
+            return false;
+        }
+
+        // If the comment creator is the same as the current user, it's authenticated
+        if (comment.getCreator().getUsername().equals(user.getUsername())) {
+            return true;
+        }
+
+        // If the user is an admin, they can authenticate any comment
+        if (user.hasRole("admin")) {
+            return true;
+        }
+
+        // If none of the above conditions are met, it's not authenticated
+        return false;
+    }
 }

@@ -1,46 +1,84 @@
-/*
- * Licensed to the Apache Software Foundation (ASF) under one or more
- *  contributor license agreements.  The ASF licenses this file to You
- * under the Apache License, Version 2.0 (the "License"); you may not
- * use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.  For additional information regarding
- * copyright in this work, please see the NOTICE file in the top level
- * directory of this distribution.
- */
-
+// Package and imports
 package org.apache.roller.weblogger.ui.rendering;
 
-import org.apache.roller.weblogger.pojos.Template;
-import org.apache.roller.weblogger.ui.rendering.mobile.MobileDeviceRepository;
+import org.apache.roller.weblogger.WebloggerException;
+import org.apache.roller.weblogger.config.WebloggerRuntimeConfig;
+import org.apache.roller.weblogger.pojos.Renderer;
+import org.apache.roller.weblogger.pojos.RendererType;
+import org.apache.roller.weblogger.util.RollerContext;
+import org.apache.roller.weblogger.util.StringUtils;
 
+// RendererFactory class
+public class RendererFactory {
 
-/**
- * Returns Renderer best suited to render a Template or null if available.
- *
- * Implementations of this interface are used to handle the actual lookup of
- * what Renderer object should be used to render a given resource.
- */
-public interface RendererFactory {
-    
-    /**
-     * Get a Renderer that will handle the given Template.
-     * If a RendererFactory does not have a Renderer which can handle the
-     * content then it may return null.
-     *
-     * This method purposely does not throw exceptions because the rendering
-     * system as a whole does not care if a given factory generates an exception
-     * while trying to find a renderer.  It is up to the factory itself to
-     * report any relevant exceptions itself.
-     */
-    Renderer getRenderer(Template template,
-		MobileDeviceRepository.DeviceType deviceType);
-    
+    // RendererType enum
+    public enum RenderingType {
+        HTML,
+        XML,
+        ATOM,
+        RSS
+    }
+
+    // createRenderer method
+    public Renderer createRenderer(RenderingType renderingType) throws WebloggerException {
+        switch (renderingType) {
+            case HTML:
+                return new HtmlRenderer();
+            case XML:
+                return new XmlRenderer();
+            case ATOM:
+                return new AtomRenderer();
+            case RSS:
+                return new RssRenderer();
+            default:
+                throw new WebloggerException("Unsupported rendering type");
+        }
+    }
+
+    // Abstract Renderer class
+    private abstract class AbstractRenderer implements Renderer {
+        protected WebloggerRuntimeConfig config;
+
+        public AbstractRenderer() {
+            this.config = WebloggerRuntimeConfig.getWebloggerConfig();
+        }
+
+        public abstract String render(RollerContext context);
+    }
+
+    // HtmlRenderer class
+    private class HtmlRenderer extends AbstractRenderer {
+        @Override
+        public String render(RollerContext context) {
+            // HTML rendering logic
+            return "";
+        }
+    }
+
+    // XmlRenderer class
+    private class XmlRenderer extends AbstractRenderer {
+        @Override
+        public String render(RollerContext context) {
+            // XML rendering logic
+            return "";
+        }
+    }
+
+    // AtomRenderer class
+    private class AtomRenderer extends AbstractRenderer {
+        @Override
+        public String render(RollerContext context) {
+            // ATOM rendering logic
+            return "";
+        }
+    }
+
+    // RssRenderer class
+    private class RssRenderer extends AbstractRenderer {
+        @Override
+        public String render(RollerContext context) {
+            // RSS rendering logic
+            return "";
+        }
+    }
 }

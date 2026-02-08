@@ -1,60 +1,66 @@
-/*
- * Licensed to the Apache Software Foundation (ASF) under one or more
- *  contributor license agreements.  The ASF licenses this file to You
- * under the Apache License, Version 2.0 (the "License"); you may not
- * use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.  For additional information regarding
- * copyright in this work, please see the NOTICE file in the top level
- * directory of this distribution.
- */
-
 package org.apache.roller.weblogger.ui.rendering.plugins.comments;
 
-import java.util.ResourceBundle;
-import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-import org.apache.roller.util.RollerConstants;
-import org.apache.roller.weblogger.config.WebloggerConfig;
-import org.apache.roller.weblogger.pojos.WeblogEntryComment;
-import org.apache.roller.weblogger.util.RollerMessages;
-
-/**
- * Validates comment only if it has fewer links than comment.validator.excessSize.threshold
- */
 public class ExcessLinksCommentValidator implements CommentValidator {
-    private ResourceBundle bundle = ResourceBundle.getBundle("ApplicationResources");  
-    private Pattern linkPattern = Pattern.compile("<a\\s*href\\s*=");    
-    private int threshold;
-        
-    public ExcessLinksCommentValidator() {
-        threshold = WebloggerConfig.getIntProperty("comment.validator.excessLinks.threshold");
-    }
-        
-    @Override
-    public String getName() {
-        return bundle.getString("comment.validator.excessLinksName");
-    }
+
+    private static final int MAX_LINKS_ALLOWED = 15;
+    private static final int MIN_COMMENT_LENGTH = 24;
+    private static final int MAX_LINK_LENGTH = 28;
 
     @Override
-    public int validate(WeblogEntryComment comment, RollerMessages messages) {
-        Matcher m = linkPattern.matcher(comment.getContent());
-        int count = 0;
-        while (m.find()) {
-            if (count++ > threshold) {
-                messages.addError("comment.validator.excessLinksMessage", Integer.toString(threshold));
-                return 0;
+    public void validate(Comment comment) {
+        validateLinkCount(comment);
+        validateCommentLength(comment);
+        validateLinkLength(comment);
+    }
+
+    private void validateLinkCount(Comment comment) {
+        int linkCount = countLinks(comment.getBody());
+        if (linkCount > MAX_LINKS_ALLOWED) {
+            comment.addValidationError("excess.links");
+        }
+    }
+
+    private void validateCommentLength(Comment comment) {
+        if (comment.getBody().length() < MIN_COMMENT_LENGTH) {
+            comment.addValidationError("comment.too.short");
+        }
+    }
+
+    private void validateLinkLength(Comment comment) {
+        String[] links = comment.getBody().split("http");
+        for (String link : links) {
+            if (link.length() > MAX_LINK_LENGTH) {
+                comment.addValidationError("link.too.long");
             }
         }
-        return RollerConstants.PERCENT_100;
     }
-    
+
+    private int countLinks(String body) {
+        String linkPattern = "http://\\S+";
+        Pattern pattern = Pattern.compile(linkPattern);
+        return (body.length() - body.replaceAll(linkPattern, "").length()) / linkPattern.length();
+    }
+
+    private static class Comment {
+        private String body;
+        private java.util.List<String> errors = new java.util.ArrayList<>();
+
+        public String getBody() {
+            return body;
+        }
+
+        public void setBody(String body) {
+            this.body = body;
+        }
+
+        public void addValidationError(String error) {
+            errors.add(error);
+        }
+    }
+
+    private interface CommentValidator {
+        void validate(Comment comment);
+    }
 }

@@ -1,75 +1,89 @@
-/*
- * Licensed to the Apache Software Foundation (ASF) under one or more
- *  contributor license agreements.  The ASF licenses this file to You
- * under the Apache License, Version 2.0 (the "License"); you may not
- * use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.  For additional information regarding
- * copyright in this work, please see the NOTICE file in the top level
- * directory of this distribution.
- */
-
 package org.apache.roller.weblogger.ui.rendering.plugins.comments;
 
-import java.io.IOException;
-import java.net.MalformedURLException;
-import java.util.ResourceBundle;
-
-import org.apache.roller.util.RollerConstants;
+import org.apache.roller.weblogger.WebloggerException;
 import org.apache.roller.weblogger.business.WebloggerFactory;
+import org.apache.roller.weblogger.pojos.Comment;
+import org.apache.roller.weblogger.pojos.Weblog;
 import org.apache.roller.weblogger.config.WebloggerRuntimeConfig;
-import org.apache.roller.weblogger.pojos.WeblogEntryComment;
-import org.apache.roller.weblogger.util.LinkbackExtractor;
-import org.apache.roller.weblogger.util.RollerMessages;
+import org.apache.roller.weblogger.util.URLUtil;
+import org.apache.roller.weblogger.ui.rendering.util.WeblogURLStrategy;
 
-/**
- * Validates comment if comment's URL links back to the comment's entry,
- * intended for use with trackbacks only.
- */
-public class TrackbackLinkbackCommentValidator implements CommentValidator {
-    
-    private ResourceBundle bundle = ResourceBundle.getBundle("ApplicationResources");
-    
-    @Override
-    public String getName() {
-        return bundle.getString("comment.validator.trackbackLinkbackName");
-    }
-    
-    @Override
-    public int validate(WeblogEntryComment comment, RollerMessages messages) {
-        
-        // linkback validation can be toggled at runtime, so check if it's enabled
-        // if it's disabled then just return a score of 100
-        if(!WebloggerRuntimeConfig.getBooleanProperty("site.trackbackVerification.enabled")) {
-            return RollerConstants.PERCENT_100;
+import java.io.IOException;
+import java.io.InputStream;
+import java.net.HttpURLConnection;
+import java.net.MalformedURLException;
+import java.net.URL;
+import java.net.URLConnection;
+import java.util.logging.Logger;
+
+public class TrackbackLinkbackCommentValidator {
+
+    private static final int MAX_COMMENT_LENGTH = 1000;
+    private static final int MAX_TRACKBACK_LENGTH = 2000;
+    private static final int TRACKBACK_SUCCESS_CODE = 200;
+    private static final int TRACKBACK_ERROR_CODE = 500;
+
+    private static final Logger log = Logger.getLogger(TrackbackLinkbackCommentValidator.class.getName());
+
+    public void validate(Comment comment) throws WebloggerException {
+        if (comment != null && comment.getContent() != null) {
+            Weblog weblog = comment.getWeblog();
+            WeblogURLStrategy urlStrategy = WeblogURLStrategy.getInstance();
+            String trackbackUrl = urlStrategy.getTrackbackUrl(weblog);
+
+            if (trackbackUrl != null) {
+                if (comment.getContent().length() > MAX_COMMENT_LENGTH) {
+                    throw new WebloggerException("Comment content exceeds maximum allowed length of " + MAX_COMMENT_LENGTH + " characters");
+                }
+
+                if (!isValidTrackbackUrl(trackbackUrl)) {
+                    throw new WebloggerException("Invalid trackback URL: " + trackbackUrl);
+                }
+
+                try {
+                    sendTrackbackRequest(trackbackUrl, comment);
+                } catch (IOException e) {
+                    log.warning("Error sending trackback request: " + e.getMessage());
+                    throw new WebloggerException("Error sending trackback request: " + e.getMessage());
+                }
+            }
         }
-        
-        int ret = 0;
-        LinkbackExtractor linkback = null;
+    }
+
+    private boolean isValidTrackbackUrl(String trackbackUrl) {
         try {
-            linkback = new LinkbackExtractor(
-                    comment.getUrl(),
-                    WebloggerFactory.getWeblogger().getUrlStrategy().getWeblogEntryURL(
-                    comment.getWeblogEntry().getWebsite(),
-                    null,
-                    comment.getWeblogEntry().getAnchor(),
-                    true));
-        } catch (MalformedURLException ignored1) {
-        } catch (IOException ignored2) {}
-        
-        if (linkback != null && linkback.getExcerpt() != null) {
-            ret = RollerConstants.PERCENT_100;
-        } else {
-            messages.addError("comment.validator.trackbackLinkbackMessage");
+            URL url = new URL(trackbackUrl);
+            if (url.getProtocol().equals("http") || url.getProtocol().equals("https")) {
+                return true;
+            }
+        } catch (MalformedURLException e) {
+            log.warning("Invalid trackback URL: " + trackbackUrl);
         }
-        return ret;
+        return false;
     }
-    
+
+    private void sendTrackbackRequest(String trackbackUrl, Comment comment) throws IOException {
+        URL url = new URL(trackbackUrl);
+        URLConnection connection = url.openConnection();
+        HttpURLConnection httpConnection = (HttpURLConnection) connection;
+        httpConnection.setRequestMethod("POST");
+        httpConnection.setRequestProperty("Content-Type", "application/x-www-form-urlencoded");
+
+        String trackbackData = "title=" + comment.getTitle() + "&url=" + comment.getUrl() + "&excerpt=" + comment.getExcerpt();
+        if (trackbackData.length() > MAX_TRACKBACK_LENGTH) {
+            throw new WebloggerException("Trackback data exceeds maximum allowed length of " + MAX_TRACKBACK_LENGTH + " characters");
+        }
+
+        httpConnection.setDoOutput(true);
+        httpConnection.getOutputStream().write(trackbackData.getBytes());
+
+        int responseCode = httpConnection.getResponseCode();
+        if (responseCode != TRACKBACK_SUCCESS_CODE) {
+            throw new WebloggerException("Trackback request failed with response code " + responseCode);
+        }
+
+        try (InputStream inputStream = httpConnection.getInputStream()) {
+            // Close the input stream to free up resources
+        }
+    }
 }

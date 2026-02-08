@@ -1,79 +1,78 @@
-/*
- * Licensed to the Apache Software Foundation (ASF) under one or more
- *  contributor license agreements.  The ASF licenses this file to You
- * under the Apache License, Version 2.0 (the "License"); you may not
- * use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.  For additional information regarding
- * copyright in this work, please see the NOTICE file in the top level
- * directory of this distribution.
- */
-
 package org.apache.roller.weblogger.ui.rendering.plugins.comments;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.stream.Collectors;
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
-import org.apache.roller.util.RollerConstants;
-import org.apache.roller.weblogger.pojos.WeblogEntryComment;
-import org.apache.roller.weblogger.util.Reflection;
-import org.apache.roller.weblogger.util.RollerMessages;
+import org.apache.roller.weblogger.WebloggerException;
+import org.apache.roller.weblogger.business.WebloggerFactory;
+import org.apache.roller.weblogger.pojos.Comment;
+import org.apache.roller.weblogger.pojos.Weblog;
+import org.apache.roller.weblogger.pojos.WeblogEntry;
+import org.apache.roller.weblogger.util.ReflectionUtilities;
 
-/**
- * Responsible for loading validators and using them to validate comments.
- */
+import java.lang.reflect.InvocationTargetException;
+import java.util.List;
+import java.util.ArrayList;
+
 public class CommentValidationManager {
 
-    private static final Log log = LogFactory.getLog(CommentValidationManager.class);
-    private final List<CommentValidator> validators = new ArrayList<>();
+    private static final int MAX_COMMENT_LENGTH = 1000;
 
-    public CommentValidationManager() {
-        
-        // instantiate the validators that are configured
-        try {
-            validators.addAll(Reflection.newInstancesFromProperty("comment.validator.classnames"));
-        } catch (ReflectiveOperationException ex) {
-            log.error("Error instantiating comment validators", ex);
+    private CommentValidatorFactory commentValidatorFactory;
+
+    public CommentValidationManager(CommentValidatorFactory commentValidatorFactory) {
+        this.commentValidatorFactory = commentValidatorFactory;
+    }
+
+    public List<CommentValidationError> validateComment(Comment comment) {
+        List<CommentValidationError> errors = new ArrayList<>();
+
+        validateCommentLength(comment, errors);
+        validateCommentContent(comment, errors);
+
+        return errors;
+    }
+
+    private void validateCommentLength(Comment comment, List<CommentValidationError> errors) {
+        if (comment.getContent().length() > MAX_COMMENT_LENGTH) {
+            errors.add(new CommentValidationError("comment.too.long", "Comment is too long"));
         }
-        
-        log.info("Configured " + validators.size() + " CommentValidators");
-        log.info(validators.stream().map(t -> t.getClass().toString()).collect(Collectors.joining(",", "[", "]")));
     }
-    
-    /**
-     * Add validator to those managed by this manager (testing purposes).
-     */
-    public void addCommentValidator(CommentValidator val) {
-        validators.add(val);
+
+    private void validateCommentContent(Comment comment, List<CommentValidationError> errors) {
+        List<CommentValidator> commentValidators = commentValidatorFactory.createCommentValidators();
+
+        for (CommentValidator validator : commentValidators) {
+            validator.validateComment(comment, errors);
+        }
     }
-    
-    /**
-     * @param comment Comment to be validated
-     * @param messages Messages object to which errors will be added
-     * @return Number indicating confidence that comment is valid (100 meaning 100%)
-     */
-    public int validateComment(WeblogEntryComment comment, RollerMessages messages) {
-        int total = 0;
-        if (!validators.isEmpty()) {
-            for (CommentValidator val : validators) {
-                log.debug("Invoking comment validator "+val.getName());
-                total += val.validate(comment, messages);
+
+    public static class CommentValidationError {
+        private String key;
+        private String message;
+
+        public CommentValidationError(String key, String message) {
+            this.key = key;
+            this.message = message;
+        }
+
+        public String getKey() {
+            return key;
+        }
+
+        public String getMessage() {
+            return message;
+        }
+    }
+
+    public interface CommentValidator {
+        void validateComment(Comment comment, List<CommentValidationError> errors);
+    }
+
+    public static class CommentValidatorFactory {
+        public List<CommentValidator> createCommentValidators() {
+            try {
+                return ReflectionUtilities.newInstancesFromProperty("comment.validators");
+            } catch (ClassNotFoundException | NoSuchMethodException | InstantiationException | IllegalAccessException | InvocationTargetException e) {
+                throw new WebloggerException("Error creating comment validators", e);
             }
-            total = total / validators.size();
-        } else {
-            // When no validators: consider all comments valid
-            total = RollerConstants.PERCENT_100;
         }
-        return total;
     }
-    
 }

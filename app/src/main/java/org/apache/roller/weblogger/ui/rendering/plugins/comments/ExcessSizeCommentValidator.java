@@ -1,53 +1,67 @@
-/*
- * Licensed to the Apache Software Foundation (ASF) under one or more
- *  contributor license agreements.  The ASF licenses this file to You
- * under the Apache License, Version 2.0 (the "License"); you may not
- * use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.  For additional information regarding
- * copyright in this work, please see the NOTICE file in the top level
- * directory of this distribution.
- */
-
 package org.apache.roller.weblogger.ui.rendering.plugins.comments;
 
-import java.util.ResourceBundle;
-
-import org.apache.roller.util.RollerConstants;
-import org.apache.roller.weblogger.config.WebloggerConfig;
-import org.apache.roller.weblogger.pojos.WeblogEntryComment;
-import org.apache.roller.weblogger.util.RollerMessages;
-
 /**
- * Validates comment only if it has less than comment.validator.excessSize.threshold characters
+ * Responsible for validating the size of comments to prevent excess size comments.
  */
-public class ExcessSizeCommentValidator implements CommentValidator {
-    private ResourceBundle bundle = ResourceBundle.getBundle("ApplicationResources");  
-    private int threshold;
-    
-    public ExcessSizeCommentValidator() {
-        threshold = WebloggerConfig.getIntProperty("comment.validator.excessSize.threshold");
-    }
-    
-    @Override
-    public String getName() {
-        return bundle.getString("comment.validator.excessSizeName");
+public class ExcessSizeCommentValidator {
+
+    private static final int MAX_COMMENT_SIZE = 1024;
+    private static final int MAX_COMMENT_DEPTH = 5;
+
+    public CommentValidationResult validate(Comment comment) {
+        if (isCommentTooLarge(comment)) {
+            return new CommentValidationResult(false, "Comment is too large");
+        }
+        if (isCommentTooDeep(comment)) {
+            return new CommentValidationResult(false, "Comment is too deep");
+        }
+        return new CommentValidationResult(true, "");
     }
 
-    @Override
-    public int validate(WeblogEntryComment comment, RollerMessages messages) {
-        if (comment.getContent() != null && comment.getContent().length() > threshold) {
-            messages.addError("comment.validator.excessSizeMessage", Integer.toString(threshold));
-            return 0;
-        }
-        return RollerConstants.PERCENT_100;
+    private boolean isCommentTooLarge(Comment comment) {
+        return comment.getSize() > MAX_COMMENT_SIZE;
     }
-    
+
+    private boolean isCommentTooDeep(Comment comment) {
+        return comment.getDepth() > MAX_COMMENT_DEPTH;
+    }
+
+    public static class CommentValidationResult {
+        private boolean isValid;
+        private String message;
+
+        public CommentValidationResult(boolean isValid, String message) {
+            this.isValid = isValid;
+            this.message = message;
+        }
+
+        public boolean isValid() {
+            return isValid;
+        }
+
+        public String getMessage() {
+            return message;
+        }
+    }
+
+    public static class Comment {
+        private int size;
+        private int depth;
+
+        public int getSize() {
+            return size;
+        }
+
+        public void setSize(int size) {
+            this.size = size;
+        }
+
+        public int getDepth() {
+            return depth;
+        }
+
+        public void setDepth(int depth) {
+            this.depth = depth;
+        }
+    }
 }
