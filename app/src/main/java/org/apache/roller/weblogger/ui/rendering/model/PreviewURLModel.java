@@ -1,80 +1,99 @@
-/*
- * Licensed to the Apache Software Foundation (ASF) under one or more
- *  contributor license agreements.  The ASF licenses this file to You
- * under the Apache License, Version 2.0 (the "License"); you may not
- * use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.  For additional information regarding
- * copyright in this work, please see the NOTICE file in the top level
- * directory of this distribution.
- */
-
 package org.apache.roller.weblogger.ui.rendering.model;
 
-import java.util.Map;
-import org.apache.roller.weblogger.WebloggerException;
-import org.apache.roller.weblogger.business.URLStrategy;
-import org.apache.roller.weblogger.business.WebloggerFactory;
+import org.apache.roller.weblogger.config.WebloggerRuntimeConfig;
 import org.apache.roller.weblogger.pojos.Weblog;
-import org.apache.roller.weblogger.ui.rendering.util.WeblogPreviewRequest;
-import org.apache.roller.weblogger.ui.rendering.util.WeblogRequest;
+import org.apache.roller.weblogger.pojos.WeblogEntry;
+import org.apache.roller.weblogger.ui.rendering.model.RenderContext;
+import org.apache.roller.weblogger.ui.rendering.model.WeblogURLStrategy;
+import org.apache.roller.weblogger.util.URLUtilities;
+import org.apache.roller.weblogger.util.WebloggerConfig;
 
-/**
- * Special subclass of URLModel which can change some of the urls which are
- * generated to make them work for previewing mode.
- */
-public class PreviewURLModel extends URLModel {
-    
-    private Weblog weblog = null;
+public class PreviewURLModel {
 
-    private URLStrategy urlStrategy = null;
-    
-    
-    @Override
-    public void init(Map<String, Object> initData) throws WebloggerException {
-        
-        // need a weblog request so that we can know the weblog and locale
-        WeblogRequest weblogRequest = (WeblogRequest) initData.get("parsedRequest");
-        if(weblogRequest == null) {
-            throw new WebloggerException("Expected 'weblogRequest' init param!");
-        }
-        
-        // PreviewURLModel only works on preview requests, so cast weblogRequest
-        // into a WeblogPreviewRequest and if it fails then throw exception
-        if(!(weblogRequest instanceof WeblogPreviewRequest)) {
-            throw new WebloggerException("weblogRequest is not a WeblogPreviewRequest."+
-                    "  PreviewURLModel only supports preview requests.");
-        }
-        
-        this.weblog = weblogRequest.getWeblog();
-        this.locale = weblogRequest.getLocale();
-        
-        // look for url strategy
-        urlStrategy = (URLStrategy) initData.get("urlStrategy");
-        if(urlStrategy == null) {
-            urlStrategy = WebloggerFactory.getWeblogger().getUrlStrategy();
-        }
-        
-        super.init(initData);
+    private static final String DEFAULT_PREVIEW_URL = "http://localhost:8080/roller";
+    private static final String HTTPS_PROTOCOL = "https";
+    private static final String HTTP_PROTOCOL = "http";
+
+    private RenderContext renderContext;
+
+    public PreviewURLModel(RenderContext renderContext) {
+        this.renderContext = renderContext;
     }
-    
-    
-    /**
-     * We need resource urls to point to our custom PreviewResourceServlet
-     * because when previewing a theme the ResourceServlet has no way of
-     * knowing what theme you are previewing and thus couldn't find the
-     * resources for that theme.
-     */
-    @Override
-    public String resource(String filePath) {
-        return urlStrategy.getWeblogResourceURL(weblog, filePath, true);
+
+    public String getPreviewURL(WeblogEntry entry) {
+        return getPreviewURL(entry, false);
     }
-    
+
+    public String getPreviewURL(WeblogEntry entry, boolean https) {
+        Weblog weblog = entry.getWeblog();
+
+        if (weblog != null) {
+            String urlStrategy = weblog.getUrlStrategy();
+            return getPreviewURL(weblog, urlStrategy, https);
+        } else {
+            return getPreviewURL(renderContext, https);
+        }
+    }
+
+    private String getPreviewURL(Weblog weblog, String urlStrategy, boolean https) {
+        WeblogURLStrategy strategy = getURLStrategy(urlStrategy);
+        return strategy.getPreviewURL(weblog, https);
+    }
+
+    private String getPreviewURL(RenderContext renderContext, boolean https) {
+        WebloggerConfig config = WebloggerRuntimeConfig.getWebloggerConfig();
+        String hostname = getHostname(config);
+        int port = getPort(config, https);
+        String protocol = getProtocol(https);
+
+        return URLUtilities.createURL(protocol, hostname, port, renderContext.getWeblog().getId());
+    }
+
+    private String getHostname(WebloggerConfig config) {
+        return config.getHostname();
+    }
+
+    private int getPort(WebloggerConfig config, boolean https) {
+        return https ? config.getHttpsPort() : config.getHttpPort();
+    }
+
+    private String getProtocol(boolean https) {
+        return https ? HTTPS_PROTOCOL : HTTP_PROTOCOL;
+    }
+
+    private WeblogURLStrategy getURLStrategy(String strategyName) {
+        switch (strategyName) {
+            case "dotnet":
+                return new DotnetURLStrategy();
+            case "jroller":
+                return new JRollerURLStrategy();
+            default:
+                return new DefaultURLStrategy();
+        }
+    }
+
+    private interface WeblogURLStrategy {
+        String getPreviewURL(Weblog weblog, boolean https);
+    }
+
+    private class DefaultURLStrategy implements WeblogURLStrategy {
+        @Override
+        public String getPreviewURL(Weblog weblog, boolean https) {
+            return getPreviewURL(weblog, "default", https);
+        }
+    }
+
+    private class DotnetURLStrategy implements WeblogURLStrategy {
+        @Override
+        public String getPreviewURL(Weblog weblog, boolean https) {
+            return getPreviewURL(weblog, "dotnet", https);
+        }
+    }
+
+    private class JRollerURLStrategy implements WeblogURLStrategy {
+        @Override
+        public String getPreviewURL(Weblog weblog, boolean https) {
+            return getPreviewURL(weblog, "jroller", https);
+        }
+    }
 }

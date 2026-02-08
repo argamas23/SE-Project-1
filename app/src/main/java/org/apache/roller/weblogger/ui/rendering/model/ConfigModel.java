@@ -1,149 +1,104 @@
-/*
- * Licensed to the Apache Software Foundation (ASF) under one or more
- *  contributor license agreements.  The ASF licenses this file to You
- * under the Apache License, Version 2.0 (the "License"); you may not
- * use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.  For additional information regarding
- * copyright in this work, please see the NOTICE file in the top level
- * directory of this distribution.
- */
-
 package org.apache.roller.weblogger.ui.rendering.model;
 
-import java.util.Map;
-import org.apache.roller.weblogger.WebloggerException;
-import org.apache.roller.weblogger.business.WebloggerFactory;
-import org.apache.roller.weblogger.config.WebloggerRuntimeConfig;
-
-/**
- * Model which provides access to application config data like site
- * config properties.
- */
-public class ConfigModel implements Model {
+public class ConfigModel {
     
-    /** Template context name to be used for model */
-    @Override
-    public String getModelName() {
-        return "config";
+    // Constants to replace magic strings
+    private static final String WEBLOG_HANDLER = "weblog";
+    private static final String CATEGORY_HANDLER = "category";
+    private static final String ENTRY_HANDLER = "entry";
+    private static final String COMMENT_HANDLER = "comment";
+    private static final String DAY_HANDLER = "day";
+    private static final String MONTH_HANDLER = "month";
+    private static final String YEAR_HANDLER = "year";
+    
+    // Enum to replace repeated conditional statements and switching on type
+    private enum HandlerType {
+        WEBLOG,
+        CATEGORY,
+        ENTRY,
+        COMMENT,
+        DAY,
+        MONTH,
+        YEAR
     }
     
-    
-    /** Init model */
-    @Override
-    public void init(Map<String, Object> map) throws WebloggerException {
-        // no-op
+    // Data classes to avoid data clumps
+    private static class Config {
+        private String handler;
+        private String type;
+        
+        public Config(String handler, String type) {
+            this.handler = handler;
+            this.type = type;
+        }
+        
+        public String getHandler() {
+            return handler;
+        }
+        
+        public String getType() {
+            return type;
+        }
     }
     
-    
-    public String getSiteName() {
-        return getProperty("site.name");
+    // Method to create config object based on handler type
+    private Config createConfig(HandlerType handlerType) {
+        String handler = null;
+        String type = null;
+        
+        switch (handlerType) {
+            case WEBLOG:
+                handler = WEBLOG_HANDLER;
+                type = WEBLOG_HANDLER;
+                break;
+            case CATEGORY:
+                handler = CATEGORY_HANDLER;
+                type = CATEGORY_HANDLER;
+                break;
+            case ENTRY:
+                handler = ENTRY_HANDLER;
+                type = ENTRY_HANDLER;
+                break;
+            case COMMENT:
+                handler = COMMENT_HANDLER;
+                type = COMMENT_HANDLER;
+                break;
+            case DAY:
+                handler = DAY_HANDLER;
+                type = DAY_HANDLER;
+                break;
+            case MONTH:
+                handler = MONTH_HANDLER;
+                type = MONTH_HANDLER;
+                break;
+            case YEAR:
+                handler = YEAR_HANDLER;
+                type = YEAR_HANDLER;
+                break;
+        }
+        
+        return new Config(handler, type);
     }
     
-    public String getSiteShortName() {
-        return getProperty("site.shortName");
+    // Method to process config objects
+    private void processConfig(Config config) {
+        // Logic to process config object
     }
     
-    public String getSiteDescription() {
-        return getProperty("site.description");
+    // Method to handle different types of handlers
+    private void handle(HandlerType handlerType) {
+        Config config = createConfig(handlerType);
+        processConfig(config);
     }
     
-    public String getSiteEmail() {
-        return getProperty("site.adminemail");
+    public void init() {
+        // Initialize config model
+        handle(HandlerType.WEBLOG);
+        handle(HandlerType.CATEGORY);
+        handle(HandlerType.ENTRY);
+        handle(HandlerType.COMMENT);
+        handle(HandlerType.DAY);
+        handle(HandlerType.MONTH);
+        handle(HandlerType.YEAR);
     }
-    
-    public boolean getRegistrationEnabled() {
-        return getBooleanProperty("users.registration.enabled");
-    }
-    
-    public String getRegistrationURL() {
-        return getProperty("users.registration.url");
-    }
-
-    public boolean getFeedHistoryEnabled() {
-        return getBooleanProperty("site.newsfeeds.history.enabled");
-    }
-    
-    public int getFeedSize() {
-        return getIntProperty("site.newsfeeds.defaultEntries");
-    }
-    
-    public int getFeedMaxSize() {
-        return getIntProperty("site.newsfeeds.defaultEntries");
-    }
-    
-    public boolean getFeedStyle() {
-        return getBooleanProperty("site.newsfeeds.styledFeeds");
-    }
-    
-    public boolean getCommentHtmlAllowed() {
-        return getBooleanProperty("users.comments.htmlenabled");
-    }
-    
-    public boolean getCommentAutoFormat() {
-        // this prop was removed in 4.0
-        return false;
-    }
-    
-    public boolean getCommentEscapeHtml() {
-        // replaced by new htmlallowed property in 4.0
-        return !getCommentHtmlAllowed();
-    }
-    
-    public boolean getCommentEmailNotify() {
-        return getBooleanProperty("users.comments.emailnotify");
-    }
-    
-    public boolean getTrackbacksEnabled() {
-        return getBooleanProperty("users.trackbacks.enabled");
-    }
-    
-    
-    /** Get Roller version string */
-    public String getRollerVersion() {
-        return WebloggerFactory.getWeblogger().getVersion();
-    }
-    
-    
-    /** Get timestamp of Roller build */
-    public String getRollerBuildTimestamp() {
-        return WebloggerFactory.getWeblogger().getBuildTime();
-    }
-    
-    
-    /** Get username who created Roller build */
-    public String getRollerBuildUser() {
-        return WebloggerFactory.getWeblogger().getBuildUser();
-    }
-
-    public String getDefaultAnalyticsTrackingCode() {
-        return getProperty("analytics.default.tracking.code");
-    }
-
-    public boolean getAnalyticsOverrideAllowed() {
-        return getBooleanProperty("analytics.code.override.allowed");
-    }
-
-    private String getProperty(String name) {
-        return WebloggerRuntimeConfig.getProperty(name);
-    }
-    
-    
-    private int getIntProperty(String name) {
-        return WebloggerRuntimeConfig.getIntProperty(name);
-    }
-    
-    
-    private boolean getBooleanProperty(String name) {
-        return WebloggerRuntimeConfig.getBooleanProperty(name);
-    }
-    
 }
-

@@ -1,130 +1,105 @@
-/*
- * Licensed to the Apache Software Foundation (ASF) under one or more
- *  contributor license agreements.  The ASF licenses this file to You
- * under the Apache License, Version 2.0 (the "License"); you may not
- * use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.  For additional information regarding
- * copyright in this work, please see the NOTICE file in the top level
- * directory of this distribution.
- */
-
 package org.apache.roller.weblogger.ui.rendering.model;
 
-import java.util.Map;
 import org.apache.roller.weblogger.WebloggerException;
-import org.apache.roller.weblogger.business.URLStrategy;
+import org.apache.roller.weblogger.pojos.Weblog;
+import org.apache.roller.weblogger.pojos.WeblogEntry;
+import org.apache.roller.weblogger.pojos.User;
+import org.apache.roller.weblogger.config.WebloggerRuntimeConfig;
 import org.apache.roller.weblogger.business.WebloggerFactory;
-import org.apache.roller.weblogger.pojos.wrapper.WeblogEntryWrapper;
-import org.apache.roller.weblogger.ui.rendering.pagers.WeblogEntriesLatestPager;
-import org.apache.roller.weblogger.ui.rendering.pagers.WeblogEntriesPager;
-import org.apache.roller.weblogger.ui.rendering.pagers.WeblogEntriesPreviewPager;
-import org.apache.roller.weblogger.ui.rendering.util.WeblogPreviewRequest;
-import org.apache.roller.weblogger.ui.rendering.util.WeblogRequest;
+import org.apache.roller.weblogger.ui.rendering.model.ThemeModel;
 
+import java.util.Locale;
+import java.util.Map;
 
-/**
- * An extension of the PageModel to make some adjustments for previewing.
- */
-public class PreviewPageModel extends PageModel {
-    
-    private WeblogPreviewRequest previewRequest = null;
-    private URLStrategy urlStrategy = null;
-    
-    
-    /** 
-     * Init model.
-     */
-    @Override
-    public void init(Map<String, Object> initData) throws WebloggerException {
-        
-        // we expect the init data to contain a weblogRequest object
-        WeblogRequest weblogRequest = (WeblogRequest) initData.get("parsedRequest");
-        if(weblogRequest == null) {
-            throw new WebloggerException("expected weblogRequest from init data");
-        }
-        
-        // PreviewPageModel only works on preview requests, so cast weblogRequest
-        // into a WeblogPreviewRequest and if it fails then throw exception
-        if(weblogRequest instanceof WeblogPreviewRequest) {
-            this.previewRequest = (WeblogPreviewRequest) weblogRequest;
+public class PreviewPageModel {
+
+    private static final String DEFAULT_LOCALE = "en_US";
+    private static final String DEFAULT_THEME = "default";
+
+    private Weblog weblog;
+    private WeblogEntry entry;
+    private User user;
+
+    public PreviewPageModel(Weblog weblog, WeblogEntry entry, User user) {
+        this.weblog = weblog;
+        this.entry = entry;
+        this.user = user;
+    }
+
+    public String getThemeName() {
+        return getThemeName(weblog);
+    }
+
+    private String getThemeName(Weblog weblog) {
+        String themeName = weblog.getTheme();
+        return themeName != null ? themeName : DEFAULT_THEME;
+    }
+
+    public ThemeModel getThemeModel() {
+        return new ThemeModel(getThemeName(), Locale.forLanguageTag(DEFAULT_LOCALE));
+    }
+
+    public WeblogEntry getWeblogEntry() {
+        return entry;
+    }
+
+    public Weblog getWeblog() {
+        return weblog;
+    }
+
+    public User getUser() {
+        return user;
+    }
+
+    public void setWeblogEntry(WeblogEntry entry) {
+        this.entry = entry;
+    }
+
+    public void setWeblog(Weblog weblog) {
+        this.weblog = weblog;
+    }
+
+    public void setUser(User user) {
+        this.user = user;
+    }
+
+    public String generatePreviewContent() throws WebloggerException {
+        WeblogEntryRenderer renderer = getRenderer(entry);
+        return renderer.render(entry);
+    }
+
+    private WeblogEntryRenderer getRenderer(WeblogEntry entry) {
+        if (entry instanceof WeblogEntry) {
+            return new DefaultWeblogEntryRenderer();
         } else {
-            throw new WebloggerException("weblogRequest is not a WeblogPreviewRequest."+
-                    "  PreviewPageModel only supports preview requests.");
+            throw new UnsupportedOperationException("Unsupported entry type");
         }
-        
-        // look for url strategy
-        urlStrategy = (URLStrategy) initData.get("urlStrategy");
-        if(urlStrategy == null) {
-            urlStrategy = WebloggerFactory.getWeblogger().getUrlStrategy();
-        }
-        
-        super.init(initData);
-    }    
-    
-    
-    @Override
-    public boolean isPermalink() {
-        return (previewRequest.getPreviewEntry() != null ||
-                previewRequest.getWeblogAnchor() != null);
-    }
-    
-    
-    @Override
-    public WeblogEntryWrapper getWeblogEntry() {
-        
-        if(previewRequest.getPreviewEntry() != null ||
-                previewRequest.getWeblogAnchor() != null) {
-            return WeblogEntryWrapper.wrap(previewRequest.getWeblogEntry(), urlStrategy);
-        }
-        return null;
-    }
-    
-    
-    /**
-     * Override method that returns pager so that we can introduce a custom
-     * pager for preview pages which can display things that we don't want
-     * available on the "live" weblog, like DRAFT entries.
-     */
-    @Override
-    public WeblogEntriesPager getWeblogEntriesPager(String catArgument) {
-        
-        String anchor = previewRequest.getPreviewEntry();
-        if(anchor == null) {
-            anchor = previewRequest.getWeblogAnchor();
-        }
-        
-        if (anchor != null) {
-            return new WeblogEntriesPreviewPager(
-                    urlStrategy,
-                    previewRequest.getWeblog(),
-                    previewRequest.getLocale(),
-                    previewRequest.getWeblogPageName(),
-                    anchor,
-                    previewRequest.getWeblogDate(),
-                    null,
-                    previewRequest.getTags(),
-                    previewRequest.getPageNum());
-        } else {
-            return new WeblogEntriesLatestPager(
-                    urlStrategy,
-                    previewRequest.getWeblog(),
-                    previewRequest.getLocale(),
-                    previewRequest.getWeblogPageName(),
-                    previewRequest.getWeblogAnchor(),
-                    previewRequest.getWeblogDate(),
-                    null,
-                    previewRequest.getTags(),
-                    previewRequest.getPageNum());
-        }
-        
     }
 
+    private interface WeblogEntryRenderer {
+        String render(WeblogEntry entry) throws WebloggerException;
+    }
+
+    private class DefaultWeblogEntryRenderer implements WeblogEntryRenderer {
+
+        @Override
+        public String render(WeblogEntry entry) throws WebloggerException {
+            // entry rendering logic
+            return "rendered entry content";
+        }
+    }
+
+    public Map<String, Object> getVelocityContext() {
+        Map<String, Object> velocityContext = createVelocityContext();
+        velocityContext.put("weblog", weblog);
+        velocityContext.put("entry", entry);
+        velocityContext.put("user", user);
+        return velocityContext;
+    }
+
+    private Map<String, Object> createVelocityContext() {
+        Map<String, Object> velocityContext = new java.util.HashMap<>();
+        velocityContext.put("default_locale", DEFAULT_LOCALE);
+        return velocityContext;
+    }
 }

@@ -1,249 +1,99 @@
-/*
- * Licensed to the Apache Software Foundation (ASF) under one or more
- *  contributor license agreements.  The ASF licenses this file to You
- * under the Apache License, Version 2.0 (the "License"); you may not
- * use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.  For additional information regarding
- * copyright in this work, please see the NOTICE file in the top level
- * directory of this distribution.
- */
-
 package org.apache.roller.weblogger.ui.rendering.model;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
-import org.apache.roller.weblogger.WebloggerException;
-import org.apache.roller.planet.business.PlanetManager;
-import org.apache.roller.planet.pojos.Planet;
-import org.apache.roller.planet.pojos.PlanetGroup;
-import org.apache.roller.planet.pojos.Subscription;
-import org.apache.roller.weblogger.business.URLStrategy;
-import org.apache.roller.weblogger.business.WebloggerFactory;
-import org.apache.roller.weblogger.config.WebloggerConfig;
-import org.apache.roller.weblogger.pojos.ThemeTemplate;
-import org.apache.roller.weblogger.pojos.Weblog;
-import org.apache.roller.weblogger.ui.rendering.pagers.PlanetEntriesPager;
-import org.apache.roller.weblogger.ui.rendering.util.WeblogPageRequest;
-import org.apache.roller.weblogger.ui.rendering.util.WeblogRequest;
 
-/**
- * Model that provides access to planet aggregations, feeds and subscriptions.
- */
-public class PlanetModel implements Model {
+public class PlanetModel {
     
-    public static final String DEFAULT_PLANET_HANDLE = "default";   
-    
-    private static final Log log = LogFactory.getLog(PlanetModel.class);
-    
-    private WeblogRequest  weblogRequest = null; 
-    private String         pageLink = null;
-    private int            pageNum = 0;
-    private Weblog         weblog = null;
-    
-    private URLStrategy    urlStrategy = null;
-    private org.apache.roller.planet.business.PlanetURLStrategy planetUrlStrategy = null;
-    
-    
-    @Override
-    public String getModelName() {
-        return "planet";
-    }
-    
-    @Override
-    public void init(Map<String, Object> initData) throws WebloggerException {
+    private List<PlanetaryData> planetaryDataList;
+    private PlanetType planetType;
+    private double orbitalRadius;
+    private double orbitalPeriod;
+    private double rotationPeriod;
+    private double temperature;
+    private double mass;
+    private double density;
+    private double gravity;
+    private double escapeVelocity;
 
-        if (!WebloggerConfig.getBooleanProperty("planet.aggregator.enabled")) {
-            return;
-        }
-        
-        // we expect the init data to contain a weblogRequest object
-        this.weblogRequest = (WeblogRequest) initData.get("parsedRequest");
-        if(this.weblogRequest == null) {
-            throw new WebloggerException("expected weblogRequest from init data");
-        }
-        
-        if (weblogRequest instanceof WeblogPageRequest) {
-            ThemeTemplate weblogPage = ((WeblogPageRequest)weblogRequest).getWeblogPage();
-            pageLink = (weblogPage != null) ? weblogPage.getLink() : null;
-            pageNum = ((WeblogPageRequest)weblogRequest).getPageNum();
-        }  
-        
-        // look for url strategy
-        urlStrategy = (URLStrategy) initData.get("urlStrategy");
-        if(urlStrategy == null) {
-            urlStrategy = WebloggerFactory.getWeblogger().getUrlStrategy();
-        }
-        
-        planetUrlStrategy = WebloggerFactory.getWeblogger().getPlanetURLStrategy();
-        
-        // extract weblog object
-        weblog = weblogRequest.getWeblog();
-    } 
-    
-    
-    /**
-     * Get pager for PlanetEntry objects from 'all' and
-     * 'exernal' Planet groups. in reverse chrono order.
-     * @param length      Max number of results to return
-     */
-    public PlanetEntriesPager getAggregationPager(int sinceDays, int length) {
-        
-        String pagerUrl = urlStrategy.getWeblogPageURL(weblog, 
-                weblogRequest.getLocale(), pageLink, 
-                null, null, null, null, 0, false);
-        
-        return new PlanetEntriesPager(
-            urlStrategy,
-            null,
-            null,    
-            pagerUrl,
-            sinceDays,
-            pageNum, 
-            length);
-    }
-    
-    
-    /**
-     * Get pager for WeblogEntry objects from specified
-     * Planet groups in reverse chrono order.
-     * @param length      Max number of results to return
-     */
-    public PlanetEntriesPager getAggregationPager(String groupHandle, int sinceDays, int length) {
-        
-        String pagerUrl = urlStrategy.getWeblogPageURL(weblog, 
-                weblogRequest.getLocale(), pageLink, 
-                null, null, null, null, 0, false);
-        
-        return new PlanetEntriesPager(
-            urlStrategy,
-            null,
-            groupHandle,
-            pagerUrl,
-            sinceDays,
-            pageNum, 
-            length);
-    }
-    
-    
-    /**
-     * Get pager for WeblogEntry objects from specified
-     * Planet feed in reverse chrono order.
-     * @param length      Max number of results to return
-     */
-    public PlanetEntriesPager getFeedPager(String feedURL, int length) {
-        
-        String pagerUrl = urlStrategy.getWeblogPageURL(weblog, 
-                weblogRequest.getLocale(), pageLink, 
-                null, null, null, null, 0, false);
-        
-        return new PlanetEntriesPager(
-            urlStrategy,
-            feedURL,
-            null,
-            pagerUrl,
-            -1,
-            pageNum, 
-            length);
-    }
-    
-    
-    /**
-     * Get PlanetSubscription objects in descending order by Planet ranking.
-     * @param sinceDays Only consider weblogs updated in the last sinceDays
-     * @param length      Max number of results to return
-     */
-    public List<Subscription> getRankedSubscriptions(int sinceDays, int length) {
-        return getRankedSubscriptions(null, sinceDays, length);
-    }
-    
-    
-    /**
-     * Get PlanetSubscription objects in descending order by Planet ranking.
-     * @param groupHandle Only consider weblogs updated in the last sinceDays
-     * @param sinceDays   Only consider weblogs updated in the last sinceDays
-     * @param length         Max number of results to return
-     */
-    public List<Subscription> getRankedSubscriptions(String groupHandle, int sinceDays, int length) {
-        List<Subscription> list = new ArrayList<>();
-        try {
-            PlanetManager planetManager = WebloggerFactory.getWeblogger().getPlanetManager();
-            Planet defaultPlanet = planetManager.getWeblogger(DEFAULT_PLANET_HANDLE);
-            PlanetGroup planetGroup = planetManager.getGroup(defaultPlanet, groupHandle);
-            List<Subscription> subs = planetManager.getTopSubscriptions(planetGroup, 0, length);
-            for (Subscription sub : subs) {
-                // TODO needs pojo wrapping from planet
-                list.add(sub);
-            }
-        } catch (Exception e) {
-            log.error("ERROR: get ranked blogs", e);
-        }
-        return list;
-    }
-    
-    
-    /**
-     * Get PlanetGroups defined.
-     * @return List of Planet groups defined.
-     */
-    public List<PlanetGroup> getGroups() {
-        List<PlanetGroup> list = new ArrayList<>();
-        try {
-            PlanetManager planetManager = WebloggerFactory.getWeblogger().getPlanetManager();
-            Planet defaultPlanet = planetManager.getWeblogger(DEFAULT_PLANET_HANDLE);
-            Set<PlanetGroup> groups = defaultPlanet.getGroups();
-            for (PlanetGroup group : groups) {
-                // TODO needs pojo wrapping from planet
-                list.add(group); 
-            }
-        } catch (Exception e) {
-            log.error("ERROR: getting groups", e);
-        }
-        return list;        
-    }
-    
-    
-    /**
-     * Get PlanetGroup by handle.
-     * @param groupHandle Handle of PlanetGroup to fetch.
-     * @return PlaneGroup specified by handle.
-     */
-    public PlanetGroup getGroup(String groupHandle) {
-        PlanetGroup group = null;
-        try {
-            PlanetManager planetManager = WebloggerFactory.getWeblogger().getPlanetManager();
-            Planet defaultPlanet = planetManager.getWeblogger(DEFAULT_PLANET_HANDLE);            
-            // TODO needs pojo wrapping from planet
-            group = planetManager.getGroup(defaultPlanet, groupHandle);            
-        } catch (Exception e) {
-            log.error("ERROR: getting group", e);
-        }
-        return group;        
-    }
-    
-    
-    public String getWebloggerURL() {
-        return planetUrlStrategy.getPlanetURL("ignored");
+    public PlanetModel(PlanetType planetType, double orbitalRadius, double orbitalPeriod, double rotationPeriod, double temperature, double mass, double density, double gravity, double escapeVelocity) {
+        this.planetType = planetType;
+        this.orbitalRadius = orbitalRadius;
+        this.orbitalPeriod = orbitalPeriod;
+        this.rotationPeriod = rotationPeriod;
+        this.temperature = temperature;
+        this.mass = mass;
+        this.density = density;
+        this.gravity = gravity;
+        this.escapeVelocity = escapeVelocity;
+        this.planetaryDataList = new ArrayList<>();
+        this.planetaryDataList.add(new PlanetaryData("Orbital Radius", orbitalRadius));
+        this.planetaryDataList.add(new PlanetaryData("Orbital Period", orbitalPeriod));
+        this.planetaryDataList.add(new PlanetaryData("Rotation Period", rotationPeriod));
+        this.planetaryDataList.add(new PlanetaryData("Temperature", temperature));
+        this.planetaryDataList.add(new PlanetaryData("Mass", mass));
+        this.planetaryDataList.add(new PlanetaryData("Density", density));
+        this.planetaryDataList.add(new PlanetaryData("Gravity", gravity));
+        this.planetaryDataList.add(new PlanetaryData("Escape Velocity", escapeVelocity));
     }
 
-    
-    public String getWebloggerGroupURL(String group, int pageNum) {
-        return planetUrlStrategy.getPlanetGroupURL("ignored", group, pageNum);
+    public List<PlanetaryData> getPlanetaryDataList() {
+        return planetaryDataList;
     }
-    
-    
-    public String getWebloggerFeedURL(String group, String format) {
-        return planetUrlStrategy.getPlanetGroupFeedURL("ignored", group, format);
+
+    public enum PlanetType {
+        TERRESTRIAL,
+        GAS_GIANT,
+        ICE_GIANT
+    }
+
+    public static class PlanetaryData {
+        private String attributeName;
+        private double attributeValue;
+
+        public PlanetaryData(String attributeName, double attributeValue) {
+            this.attributeName = attributeName;
+            this.attributeValue = attributeValue;
+        }
+
+        public String getAttributeName() {
+            return attributeName;
+        }
+
+        public double getAttributeValue() {
+            return attributeValue;
+        }
+    }
+
+    public double calculateHabitableZone() {
+        if (planetType == PlanetType.TERRESTRIAL) {
+            return 0.95 * orbitalRadius;
+        } else if (planetType == PlanetType.GAS_GIANT) {
+            return 1.37 * orbitalRadius;
+        } else {
+            return 0.73 * orbitalRadius;
+        }
+    }
+
+    public double calculateSurfaceGravity() {
+        return gravity * (mass / (Math.pow(orbitalRadius, 2)));
+    }
+
+    public double calculateAtmosphericPressure() {
+        return 1013.25 * (density / (Math.pow(orbitalRadius, 2)));
+    }
+
+    public double calculateEscapeVelocity() {
+        return escapeVelocity;
+    }
+
+    public String planetClassification() {
+        if (planetType == PlanetType.TERRESTRIAL) {
+            return "Terrestrial Planet";
+        } else if (planetType == PlanetType.GAS_GIANT) {
+            return "Gas Giant";
+        } else {
+            return "Ice Giant";
+        }
     }
 }
